@@ -345,12 +345,23 @@
     fetch('/api/gemini', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ apiKey: key, message: 'Hello! Please respond with just "ready".' })
+      body: JSON.stringify({ apiKey: key, message: 'Hello! Respond with just the word "ready".' })
     })
-    .then(r => r.json())
+    .then(r => {
+      if (!r.ok) {
+        return r.text().then(t => { throw new Error('Server error: ' + r.status); });
+      }
+      return r.json();
+    })
     .then(data => {
       if (data.error) {
-        showToast('Invalid API key: ' + data.error, 'error');
+        showToast('API Error: ' + data.error, 'error');
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-rocket"></i> Launch Assistant';
+        return;
+      }
+      if (!data.response) {
+        showToast('Unexpected response from Gemini. Please check your API key.', 'error');
         btn.disabled = false;
         btn.innerHTML = '<i class="fas fa-rocket"></i> Launch Assistant';
         return;
@@ -965,11 +976,22 @@
         })
       });
 
-      const data = await resp.json();
+      let data;
+      try {
+        data = await resp.json();
+      } catch(parseErr) {
+        throw new Error('Failed to parse response from server');
+      }
+      
       removeTypingIndicator();
 
       if (data.error) {
-        addChatMessage('assistant', 'Error: ' + data.error);
+        addChatMessage('assistant', '⚠️ ' + data.error);
+        return;
+      }
+
+      if (!data.response) {
+        addChatMessage('assistant', 'Sorry, I didn\'t get a response. Please try again.');
         return;
       }
 

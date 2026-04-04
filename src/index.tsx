@@ -19,7 +19,7 @@ app.post('/api/gemini', async (c) => {
     ]
 
     const resp = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -47,8 +47,13 @@ app.post('/api/gemini', async (c) => {
     )
 
     if (!resp.ok) {
-      const err = await resp.text()
-      return c.json({ error: `Gemini API error: ${resp.status}`, details: err }, resp.status)
+      const errText = await resp.text()
+      let errMsg = `Gemini API error (${resp.status})`
+      try {
+        const errJson = JSON.parse(errText)
+        errMsg = errJson?.error?.message || errMsg
+      } catch {}
+      return c.json({ error: errMsg }, 200) // Always return 200 to frontend with error in body
     }
 
     const data = await resp.json() as any
