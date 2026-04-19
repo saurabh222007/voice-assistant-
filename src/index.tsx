@@ -1,9 +1,19 @@
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
+import { serve } from '@hono/node-server'
+import { serveStatic } from '@hono/node-server/serve-static'
+import { stream } from 'hono/streaming'
+import youtubedl from 'youtube-dl-exec'
+import { exec } from 'child_process'
+import { promisify } from 'util'
+const execAsync = promisify(exec)
+
+import { getSetting, setSetting, getHistory, addHistory, clearHistory } from './db.js'
 
 const app = new Hono()
 
 app.use('/api/*', cors())
+app.use('/static/*', serveStatic({ root: './public' }))
 
 // ============ API ROUTES ============
 
@@ -62,6 +72,35 @@ app.post('/api/gemini', async (c) => {
   } catch (e: any) {
     return c.json({ error: e.message }, 500)
   }
+})
+
+// Database Routes for React App
+app.get('/api/settings', (c) => {
+  const key = c.req.query('key')
+  if (!key) return c.json({ error: 'Key required' }, 400)
+  return c.json({ value: getSetting(key) })
+})
+
+app.post('/api/settings', async (c) => {
+  const { key, value } = await c.req.json()
+  if (!key) return c.json({ error: 'Key required' }, 400)
+  setSetting(key, value)
+  return c.json({ success: true })
+})
+
+app.get('/api/history', (c) => {
+  return c.json({ history: getHistory() })
+})
+
+app.post('/api/history', async (c) => {
+  const { role, content } = await c.req.json()
+  addHistory(role, content)
+  return c.json({ success: true })
+})
+
+app.delete('/api/history', (c) => {
+  clearHistory()
+  return c.json({ success: true })
 })
 
 // Weather API (using open-meteo - free, no key needed)
@@ -128,141 +167,95 @@ app.get('/api/news', async (c) => {
   }
 })
 
-// YouTube search (using Invidious API - free, no key needed)
+// YouTube search (robust manual execute for multiline JSON)
 app.get('/api/youtube/search', async (c) => {
   try {
     const q = c.req.query('q')
     if (!q) return c.json({ error: 'Query required' }, 400)
 
-    // Try multiple Invidious instances
-    const instances = [
-      'https://vid.puffyan.us',
-      'https://invidious.lunar.icu',
-      'https://inv.tux.pizza',
-      'https://invidious.privacyredirect.com',
-      'https://iv.ggtyler.dev'
-    ]
-
-    let results: any[] = []
+    // Using raw exec for ytsearch because it returns multiline JSON (one per result)
+    // we use --flat-playlist for speed
+    const bin = 'node_modules/youtube-dl-exec/bin/yt-dlp.exe'
+    const command = `"${bin}" --dump-json --flat-playlist "ytsearch5:${q}"`
     
-    for (const instance of instances) {
+    const { stdout } = await execAsync(command)
+    const lines = stdout.trim().split('\n')
+    
+    const results = lines.map(line => {
       try {
-        const resp = await fetch(
-          `${instance}/api/v1/search?q=${encodeURIComponent(q)}&type=video&sort_by=relevance`,
-          { signal: AbortSignal.timeout(5000) }
-        )
-        if (resp.ok) {
-          const data = await resp.json() as any[]
-          results = data.filter((v: any) => v.type === 'video').slice(0, 5).map((v: any) => ({
-            id: v.videoId,
-            title: v.title,
-            author: v.author,
-            duration: v.lengthSeconds,
-            thumbnail: v.videoThumbnails?.[0]?.url || '',
-            instance
-          }))
-          break
+        const v = JSON.parse(line)
+        return {
+          id: v.id,
+          title: v.title,
+          author: v.uploader || v.channel || '',
+          duration: v.duration,
+          thumbnail: v.thumbnail || v.thumbnails?.[0]?.url || '',
+          instance: 'yt-dlp'
         }
-      } catch {
-        continue
-      }
-    }
-
-    // Fallback: use Piped API
-    if (results.length === 0) {
-      try {
-        const resp = await fetch(
-          `https://pipedapi.kavin.rocks/search?q=${encodeURIComponent(q)}&filter=videos`,
-          { signal: AbortSignal.timeout(5000) }
-        )
-        if (resp.ok) {
-          const data = await resp.json() as any
-          results = (data.items || []).slice(0, 5).map((v: any) => ({
-            id: v.url?.replace('/watch?v=', ''),
-            title: v.title,
-            author: v.uploaderName,
-            duration: v.duration,
-            thumbnail: v.thumbnail || '',
-            instance: 'https://pipedapi.kavin.rocks'
-          }))
-        }
-      } catch {}
-    }
+      } catch { return null }
+    }).filter(v => v !== null)
 
     return c.json({ results })
   } catch (e: any) {
-    return c.json({ error: e.message, results: [] }, 500)
+    console.error('yt-dlp search error:', e)
+    return c.json({ error: String(e), results: [] }, 500)
   }
 })
 
-// Get audio stream URL for a YouTube video
+// Get audio stream URL for a YouTube video using yt-dlp
 app.get('/api/youtube/stream', async (c) => {
   try {
     const videoId = c.req.query('id')
     if (!videoId) return c.json({ error: 'Video ID required' }, 400)
 
-    const instances = [
-      'https://vid.puffyan.us',
-      'https://invidious.lunar.icu',
-      'https://inv.tux.pizza',
-      'https://invidious.privacyredirect.com',
-      'https://iv.ggtyler.dev'
-    ]
+    const v = await youtubedl(`https://www.youtube.com/watch?v=${videoId}`, {
+      dumpSingleJson: true,
+      noWarnings: true,
+      callHome: false,
+      format: 'bestaudio'
+    }) as any
 
-    for (const instance of instances) {
-      try {
-        const resp = await fetch(
-          `${instance}/api/v1/videos/${videoId}`,
-          { signal: AbortSignal.timeout(5000) }
-        )
-        if (resp.ok) {
-          const data = await resp.json() as any
-          // Get audio-only adaptive format
-          const audioFormats = (data.adaptiveFormats || [])
-            .filter((f: any) => f.type?.startsWith('audio/'))
-            .sort((a: any, b: any) => (b.bitrate || 0) - (a.bitrate || 0))
-
-          if (audioFormats.length > 0) {
-            return c.json({
-              audioUrl: audioFormats[0].url,
-              title: data.title,
-              author: data.author,
-              duration: data.lengthSeconds,
-              thumbnail: data.videoThumbnails?.[0]?.url || ''
-            })
-          }
-        }
-      } catch {
-        continue
-      }
-    }
-
-    // Fallback: use Piped
-    try {
-      const resp = await fetch(
-        `https://pipedapi.kavin.rocks/streams/${videoId}`,
-        { signal: AbortSignal.timeout(5000) }
-      )
-      if (resp.ok) {
-        const data = await resp.json() as any
-        const audioStreams = (data.audioStreams || [])
-          .sort((a: any, b: any) => (b.bitrate || 0) - (a.bitrate || 0))
-        
-        if (audioStreams.length > 0) {
-          return c.json({
-            audioUrl: audioStreams[0].url,
-            title: data.title,
-            author: data.uploader,
-            duration: data.duration,
-            thumbnail: data.thumbnailUrl || ''
-          })
-        }
-      }
-    } catch {}
-
-    return c.json({ error: 'Could not find audio stream' }, 404)
+    return c.json({
+      audioUrl: `/api/youtube/proxy?url=${encodeURIComponent(v.url)}`,
+      title: v.title,
+      author: v.uploader,
+      duration: v.duration,
+      thumbnail: v.thumbnail || ''
+    })
   } catch (e: any) {
-    return c.json({ error: e.message }, 500)
+    console.error('yt-dlp stream error:', e)
+    return c.json({ error: e.message || String(e) }, 500)
+  }
+})
+
+// Proxy audio stream to bypass CORS and IP-locking
+app.get('/api/youtube/proxy', async (c) => {
+  const url = c.req.query('url')
+  if (!url) return c.text('URL required', 400)
+
+  try {
+    const resp = await fetch(url)
+    if (!resp.ok) return c.text('Failed to fetch stream', 502)
+
+    const contentType = resp.headers.get('content-type') || 'audio/mpeg'
+    const contentLength = resp.headers.get('content-length')
+
+    c.header('Content-Type', contentType)
+    if (contentLength) c.header('Content-Length', contentLength)
+    c.header('Accept-Ranges', 'bytes')
+
+    return stream(c, async (stream) => {
+      const reader = resp.body?.getReader()
+      if (!reader) return
+      
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        await stream.write(value)
+      }
+    })
+  } catch (e: any) {
+    return c.text(e.message, 500)
   }
 })
 
@@ -274,7 +267,7 @@ app.get('/', (c) => {
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>Someone's Voice Assistant</title>
-  <script src="https://cdn.tailwindcss.com"></script>
+  <meta name="description" content="A free AI-powered voice assistant powered by Google Gemini. Search and play music, check weather, get news, and chat with AI.">
   <link href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.5.0/css/all.min.css" rel="stylesheet">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@300;400;500;700&family=Orbitron:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎙️</text></svg>">
@@ -285,6 +278,14 @@ app.get('/', (c) => {
   <script src="/static/app.js"></script>
 </body>
 </html>`)
+})
+
+const port = 3333
+serve({
+  fetch: app.fetch,
+  port
+}, (info) => {
+  console.log(`Server is running on http://localhost:${info.port}`)
 })
 
 export default app

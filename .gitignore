@@ -6,3 +6,5 @@ dist/
 *.log
 .pm2/
 pids/
+*.sqlite
+*.sqlite-journal

@@ -2,19 +2,22 @@
   "name": "webapp",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "vite build",
-    "preview": "wrangler pages dev",
-    "deploy": "npm run build && wrangler pages deploy dist",
-    "dev:sandbox": "wrangler pages dev dist --ip 0.0.0.0 --port 3000"
+    "dev": "concurrently \"npx tsx watch src/index.tsx\" \"cd client && npm run dev\"",
+    "build": "cd client && npm run build",
+    "start": "npx tsx src/index.tsx"
   },
   "dependencies": {
-    "hono": "^4.12.10"
+    "@hono/node-server": "^1.19.12",
+    "better-sqlite3": "^12.8.0",
+    "debug": "^4.4.3",
+    "dotenv": "^17.4.0",
+    "hono": "^4.12.10",
+    "youtube-dl-exec": "^3.1.4"
   },
   "devDependencies": {
-    "@hono/vite-build": "^1.2.0",
     "@hono/vite-dev-server": "^0.18.2",
-    "vite": "^6.3.5",
-    "wrangler": "^4.4.0"
+    "concurrently": "^9.1.0",
+    "tsx": "^4.21.0",
+    "vite": "^6.3.5"
   }
 }
