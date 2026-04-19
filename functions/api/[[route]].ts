@@ -236,24 +236,37 @@ app.get('/youtube/proxy', async (c) => {
   if (!url) return c.text('Missing url', 400);
 
   const range = c.req.header('range');
-  const headers: Record<string, string> = {
-    'User-Agent': c.req.header('User-Agent') || 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-  };
-  if (range) headers['Range'] = range;
+  const targetUrl = decodeURIComponent(url);
 
-  try {
-    const resp = await fetch(decodeURIComponent(url), { headers });
+  const proxyFetch = async (target: string, attempt = 0): Promise<Response> => {
+    if (attempt > 3) return new Response('Too many redirects', { status: 508 });
 
-    // Important: Cloudflare Workers might hit sub-request limits or blocks if re-fetching too many small chunks.
-    // However, for single audio streams, passing the Range header is critical for browser <audio> engines.
+    const headers: Record<string, string> = {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      'Referer': 'https://www.youtube.com/',
+      'Accept': '*/*',
+    };
+    if (range) headers['Range'] = range;
+
+    const resp = await fetch(target, { 
+      headers,
+      redirect: 'manual' 
+    });
+
+    if (resp.status >= 300 && resp.status < 400) {
+      const location = resp.headers.get('location');
+      if (location) return proxyFetch(location, attempt + 1);
+    }
+
     const responseHeaders = new Headers();
     const headersToCopy = ['content-type', 'content-length', 'content-range', 'accept-ranges', 'cache-control'];
-    
     headersToCopy.forEach(h => {
       const val = resp.headers.get(h);
       if (val) responseHeaders.set(h, val);
     });
 
+    // Ensure Safari sees byte support
+    responseHeaders.set('Accept-Ranges', 'bytes');
     responseHeaders.set('Access-Control-Allow-Origin', '*');
     
     return new Response(resp.body, {
@@ -261,6 +274,10 @@ app.get('/youtube/proxy', async (c) => {
       statusText: resp.statusText,
       headers: responseHeaders
     });
+  };
+
+  try {
+    return await proxyFetch(targetUrl);
   } catch (e) {
     return c.text('Proxy exception: ' + (e as Error).message, 500);
   }

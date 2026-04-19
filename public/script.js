@@ -82,7 +82,18 @@
       const t = document.getElementById('musicThumb');
       if (t) t.classList.remove('spinning');
     });
-    state.audioPlayer.addEventListener('error', () => showToast('Music playback error', 'error'));
+    state.audioPlayer.addEventListener('error', (e) => {
+      const err = state.audioPlayer.error;
+      let msg = 'Unknown';
+      if (err) {
+        if (err.code === 1) msg = 'Aborted';
+        else if (err.code === 2) msg = 'Network Error';
+        else if (err.code === 3) msg = 'Decode Error';
+        else if (err.code === 4) msg = 'Source Not Supported';
+      }
+      logDebug(`Audio Player Error [Code ${err?.code || '?'}]: ${msg}`);
+      showToast('Music playback error', 'error');
+    });
   }
 
   async function checkConnection() {
@@ -109,6 +120,7 @@
       <div class="bg-animation"><div class="bg-orb"></div><div class="bg-orb"></div><div class="bg-orb"></div></div>
       <div class="particles-container" id="particles"></div>
       <div class="toast-container" id="toastContainer"></div>
+      <div class="debug-console" id="debugConsole"></div>
 
       <!-- Setup Screen -->
       <div class="setup-screen" id="setupScreen">
@@ -232,6 +244,12 @@
         <div class="setting-group">
           <label>Wake Word</label>
           <input type="text" id="wakeWordInput" value="${state.wakeWord}" onchange="window.app.updateWakeWord(this.value)">
+        </div>
+        <div class="setting-group">
+          <div class="setting-toggle">
+            <span class="setting-toggle-label">Show Debug Console</span>
+            <div class="toggle-switch ${localStorage.getItem('debug_mode') === 'true' ? 'active' : ''}" onclick="window.app.toggleDebugMode()"></div>
+          </div>
         </div>
         <div class="setting-group">
           <label>Clock Style (Standby)</label>
@@ -358,6 +376,17 @@
     state.recognition.onend = handleSpeechEnd;
   }
 
+  function logDebug(msg, type = 'error') {
+    const console = document.getElementById('debugConsole');
+    if (!console) return;
+    const line = document.createElement('div');
+    line.className = `debug-line ${type}`;
+    line.innerText = `[${new Date().toLocaleTimeString()}] ${msg}`;
+    console.prepend(line);
+    if (localStorage.getItem('debug_mode') === 'true') console.classList.add('visible');
+    console.error(`DEBUG [${type}]: ${msg}`);
+  }
+
   function handleSpeechResult(event) {
     let interim = '', final = '';
     for (let i = event.resultIndex; i < event.results.length; i++) {
@@ -399,6 +428,7 @@
   }
 
   function handleSpeechError(e) {
+    logDebug(`Speech error: ${e.error}`);
     if (e.error === 'no-speech' || e.error === 'aborted') {
       if (state.wakeWordEnabled && !state.isListening && state.userInteracted) {
         setTimeout(() => startWakeWordListening(), 500);
@@ -565,10 +595,16 @@
       showMusicPlayer(title || 'Loading...', author || ''); 
       setPlayPauseIcon(false);
       
+      logDebug(`Fetching stream for: ${videoId}`, 'info');
       const resp = await fetch(`/api/youtube/stream?id=${videoId}`);
+      if (!resp.ok) {
+        logDebug(`Stream API Error: ${resp.status}`);
+        throw new Error('Stream fetch failed');
+      }
       const data = await resp.json();
       
       if (data.error || !data.audioUrl) {
+        logDebug(`Stream Data Error: ${data.error || 'No audioUrl'}`);
         if (queue && queue.length > 0) {
           const next = queue[0];
           const remaining = queue.slice(1);
@@ -992,6 +1028,13 @@
   }
   function logout() { localStorage.removeItem('gemini_api_key'); state.apiKey=''; state.isSetup=false; location.reload(); }
 
+  function toggleDebugMode() {
+    const isDebug = localStorage.getItem('debug_mode') === 'true';
+    localStorage.setItem('debug_mode', !isDebug);
+    document.getElementById('debugConsole')?.classList.toggle('visible', !isDebug);
+    showToast(`Debug mode ${!isDebug ? 'enabled' : 'disabled'}`, 'info');
+  }
+
   // ============ UTILITY ============
   function setStatus(type, text) {
     const dot = document.getElementById('statusDot'), label = document.getElementById('statusText');
@@ -1030,7 +1073,8 @@
     toggleSettings, togglePlayPause, stopMusic, seekMusic, musicPrev, musicNext,
     playTrack, quickAction, cycleClockStyle, setClockStyle, updateApiKey,
     updateWakeWord, toggleTTS, toggleWakeWord, toggleContinuousListening,
-    logout, clearChat, copyMsg, setVolume, toggleMute, setVoice, toggleMotion, retryLast
+    logout, clearChat, copyMsg, setVolume, toggleMute, setVoice, toggleMotion, retryLast,
+    toggleDebugMode
   };
 
   // ============ START ============
