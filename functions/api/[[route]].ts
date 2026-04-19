@@ -234,24 +234,35 @@ app.get('/youtube/stream', async (c) => {
 app.get('/youtube/proxy', async (c) => {
   const url = c.req.query('url');
   if (!url) return c.text('Missing url', 400);
+
+  const range = c.req.header('range');
+  const headers: Record<string, string> = {
+    'User-Agent': c.req.header('User-Agent') || 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+  };
+  if (range) headers['Range'] = range;
+
   try {
-    const resp = await fetch(decodeURIComponent(url), {
-      headers: {
-        'User-Agent': c.req.header('User-Agent') || 'Mozilla/5.0'
-      }
+    const resp = await fetch(decodeURIComponent(url), { headers });
+
+    // Important: Cloudflare Workers might hit sub-request limits or blocks if re-fetching too many small chunks.
+    // However, for single audio streams, passing the Range header is critical for browser <audio> engines.
+    const responseHeaders = new Headers();
+    const headersToCopy = ['content-type', 'content-length', 'content-range', 'accept-ranges', 'cache-control'];
+    
+    headersToCopy.forEach(h => {
+      const val = resp.headers.get(h);
+      if (val) responseHeaders.set(h, val);
     });
 
-    if (!resp.ok) return c.text('Proxy fetch failed', resp.status as any);
-
-    const newHeaders = new Headers(resp.headers);
-    newHeaders.set('Access-Control-Allow-Origin', '*');
+    responseHeaders.set('Access-Control-Allow-Origin', '*');
     
     return new Response(resp.body, {
       status: resp.status,
-      headers: newHeaders
+      statusText: resp.statusText,
+      headers: responseHeaders
     });
   } catch (e) {
-    return c.text('Proxy exception', 500);
+    return c.text('Proxy exception: ' + (e as Error).message, 500);
   }
 });
 

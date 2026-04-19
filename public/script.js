@@ -22,7 +22,7 @@
     continuousListening: false, wakeWordDetected: false,
     settingsOpen: false, reducedMotion: localStorage.getItem('reduced_motion') === 'true',
     volume: parseFloat(localStorage.getItem('volume') || '0.8'),
-    isOnline: true, lastWakeTime: 0
+    isOnline: true, lastWakeTime: 0, userInteracted: false
   };
 
   state.audioPlayer.volume = state.volume;
@@ -60,6 +60,16 @@
     setInterval(checkConnection, 30000);
 
     if (state.apiKey) { state.isSetup = true; showAssistant(); }
+    
+    // Satisfy browser security: First user click enables audio/mic context
+    document.addEventListener('click', () => {
+      if (!state.userInteracted) {
+        state.userInteracted = true;
+        if (state.isSetup && state.wakeWordEnabled && !state.isListening) {
+          startWakeWordListening();
+        }
+      }
+    }, { once: true });
 
     state.audioPlayer.addEventListener('timeupdate', updateMusicProgress);
     state.audioPlayer.addEventListener('ended', onTrackEnd);
@@ -323,7 +333,14 @@
   function showAssistant() {
     document.getElementById('setupScreen').classList.add('hidden');
     document.getElementById('assistantView').style.display = 'flex';
-    if (state.wakeWordEnabled) startWakeWordListening();
+    
+    // Only start if user has already interacted, otherwise wait for first click
+    if (state.wakeWordEnabled && state.userInteracted) {
+      startWakeWordListening();
+    } else if (state.wakeWordEnabled) {
+      setStatus('ready', 'Click anywhere to enable microphone');
+    }
+    
     setTimeout(() => document.getElementById('chatInput')?.focus(), 500);
   }
 
@@ -383,20 +400,40 @@
 
   function handleSpeechError(e) {
     if (e.error === 'no-speech' || e.error === 'aborted') {
-      if (state.wakeWordEnabled && !state.isListening) setTimeout(() => startWakeWordListening(), 500);
+      if (state.wakeWordEnabled && !state.isListening && state.userInteracted) {
+        setTimeout(() => startWakeWordListening(), 500);
+      }
       return;
     }
-    if (state.isListening) { stopListening(); showToast('Speech error: ' + e.error, 'error'); }
+    
+    if (e.error === 'not-allowed') {
+      showToast('Microphone access denied. Please enable it in browser settings.', 'error');
+      state.wakeWordEnabled = false;
+      const toggle = document.getElementById('wakeToggle');
+      if (toggle) toggle.classList.remove('active');
+    } else if (e.error === 'network') {
+      showToast('Speech recognition network error.', 'error');
+    }
+    
+    if (state.isListening) { stopListening(); }
+    setStatus('ready', 'Speech discovery paused');
   }
 
   function handleSpeechEnd() {
-    if (state.wakeWordEnabled && state.isSetup && !state.isListening) setTimeout(() => startWakeWordListening(), 300);
-    if (state.isListening) { try { state.recognition.start(); } catch(e) {} }
+    if (state.wakeWordEnabled && state.isSetup && !state.isListening && state.userInteracted) {
+      setTimeout(() => startWakeWordListening(), 300);
+    }
+    if (state.isListening) { try { state.recognition.start(); } catch(err) {} }
   }
 
   function startWakeWordListening() {
-    if (!state.recognition || !state.wakeWordEnabled) return;
-    try { state.recognition.start(); setStatus('ready', `Listening for "${state.wakeWord}"`); } catch(e) {}
+    if (!state.recognition || !state.wakeWordEnabled || !state.userInteracted) return;
+    try { 
+      state.recognition.start(); 
+      setStatus('ready', `Listening for "${state.wakeWord}"`); 
+    } catch(err) {
+      // Recognition usually already started or starting
+    }
   }
 
   function toggleMic() { state.isListening ? stopListening() : startListening(); }
