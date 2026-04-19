@@ -1,100 +1,100 @@
 # Someone's Voice Assistant 🎙️
 
-## Project Overview
-- **Name**: Someone's Voice Assistant
-- **Goal**: A completely free, full-stack AI voice assistant powered by Google Gemini
-- **Status**: ✅ Fully Functional
+A completely free, 100% serverless full-stack AI voice assistant powered by Google Gemini, optimized for **Cloudflare Pages**. 
 
-## Features
+## ✨ Features
 
-### ✅ Implemented
-- **🤖 AI Chat**: Powered by Google Gemini 2.0 Flash - answers any question conversationally
-- **🎤 Voice Recognition**: Full speech-to-text with Web Speech API
-- **🔊 Wake Word Detection**: Always listening for customizable wake word ("hey assistant" by default)
-- **🗣️ Text-to-Speech**: Assistant speaks responses out loud
-- **🎵 Music Player**: Search and play music via YouTube (Invidious/Piped APIs)
-- **🌤️ Weather Reports**: Real-time weather via geolocation (Open-Meteo API - free, no key needed)
-- **📰 News Headlines**: Latest news from Google News RSS feed
-- **🕐 Standby Mode**: Beautiful clock display with 4 styles + weather widget
-  - Digital Clock
-  - Minimal Clock
-  - Neon Clock (with glow effects)
-  - Analog Clock (with animated hands)
-- **🎨 Dark Matte Red UI**: Premium dark theme with red accents, glass morphism, and animations
-- **⚙️ Settings Panel**: Customizable wake word, clock style, TTS toggle, continuous listening
-- **📱 Responsive Design**: Works on desktop and mobile
-- **🔒 Privacy First**: API key stored only in browser localStorage
+- **🤖 AI Chat**: Powered by Google Gemini - answers any question conversationally.
+- **🎤 Voice Recognition**: Full speech-to-text with Web Speech API.
+- **🔊 Wake Word Detection**: Always listening for your custom wake word (e.g., "hey assistant").
+- **🗣️ Text-to-Speech**: Assistant speaks responses naturally.
+- **🎵 Music Player**: Stateless music playback via YouTube (using Piped/Invidious proxy APIs).
+- **🌤️ Weather & News**: Real-time geolocation weather formatting and RSS news parsing.
+- **🕐 Standby Mode**: 5 beautiful animated clock styles including an immersive Aurora UI.
+- **🎨 Dark Matte Red UI**: Premium theme with glass-morphic accents, animated gradients, and completely pure vanilla CSS logic.
+- **🔒 Privacy First**: Your API key stays completely localized in your browser `localStorage`.
 
-## How to Use
+---
 
-### Getting Started
-1. Visit the app URL
-2. Get a free Gemini API key from [Google AI Studio](https://aistudio.google.com/apikey)
-3. Enter your API key and click "Launch Assistant"
+## 🚀 Live Demo
 
-### Voice Commands
-- **Ask anything**: "What is quantum computing?"
-- **Play music**: "Play lofi hip hop beats"
-- **Check weather**: "What's the weather like?"
-- **Get news**: "Tell me the latest news"
-- **Check time**: "What time is it?"
-- **Stop music**: "Stop the music"
+*Deploy your own or link your live demo here.*
 
-### Wake Word
-- Say **"hey assistant"** followed by your question
-- Customize the wake word in Settings
+![Setup Page Theme Screenshot](public/favicon.svg) <!-- Placeholders for screenshots -->
 
-### Standby Mode
-- Click the moon icon (🌙) to enter standby mode
-- Beautiful animated clock with weather display
-- Wake word still active in standby - just say the wake word to ask questions
-- Click "Clock Style" to cycle through 4 different clock designs
+---
 
-### Quick Actions
-Use the quick action buttons at the bottom:
-- ☀️ Weather
-- 📰 News
-- 🎵 Play Music
-- 🕐 Time
-- 😂 Joke
+## 📦 Project Structure
 
-## Tech Stack
-- **Backend**: Hono (TypeScript) on Cloudflare Workers
-- **Frontend**: Vanilla JS + Tailwind CSS + Font Awesome
-- **AI**: Google Gemini 2.0 Flash API
-- **Weather**: Open-Meteo API (free, no key)
-- **News**: Google News RSS
-- **Music**: Invidious/Piped APIs (free YouTube alternatives)
-- **Voice**: Web Speech API (recognition + synthesis)
-- **Fonts**: Inter, JetBrains Mono, Orbitron
+Structured specifically for **Cloudflare Pages** deployment.
 
-## API Routes
-| Route | Method | Description |
-|-------|--------|-------------|
-| `/` | GET | Main application page |
-| `/api/gemini` | POST | Proxy to Gemini API |
-| `/api/weather?lat=X&lon=Y` | GET | Weather data |
-| `/api/news?country=us` | GET | News headlines |
-| `/api/youtube/search?q=X` | GET | YouTube music search |
-| `/api/youtube/stream?id=X` | GET | Get audio stream URL |
-| `/static/*` | GET | Static assets |
+```text
+voice-assistant/
+├── functions/
+│   └── api/
+│       └── [[route]].ts    # Serverless Hono backend proxying API requests
+├── public/                 # Statically served files
+│   ├── index.html
+│   ├── script.js           # Core browser application logic
+│   └── styles.css          # Theme definition & structure
+├── package.json
+├── wrangler.toml           # Cloudflare dev/deployment configuration
+├── .gitignore
+└── README.md
+```
 
-## URLs
-- **Live**: https://3000-ilw5amgswpilxu2sfuspr-c81df28e.sandbox.novita.ai
+## ⚙️ Tech Stack
+- **Frontend**: Vanilla HTML / JS / CSS (No large frameworks or build steps).
+- **Backend / Proxy**: Cloudflare Workers / Pages Functions execution.
+- **Framework**: Hono (TypeScript-based router optimized for edges).
+- **Data Integrations**: Google Gemini API, Open-Meteo, Google News RSS, Piped API (Music streaming).
 
-## Data Architecture
-- **Storage**: Browser localStorage (API key, preferences only)
-- **No server-side database**: Completely stateless backend
-- **All data fetched in real-time**: Weather, news, music streams
+---
 
-## Deployment
-- **Platform**: Cloudflare Pages
-- **Status**: ✅ Active
-- **Tech Stack**: Hono + TypeScript + TailwindCSS (CDN) + Vanilla JS
-- **Last Updated**: 2026-04-04
+## 🛠️ Usage & Local Development
 
-## Privacy & Security
-- Your Gemini API key is stored **only in your browser** (localStorage)
-- API calls are proxied through the backend for CORS compatibility
-- No tracking, no analytics, no data collection
-- Completely free to use
+This project uses Cloudflare Wrangler to simulate the edge node environment locally.
+
+### 1. Requirements
+Ensure you have [Node.js](https://nodejs.org/) installed.
+
+### 2. Setup
+Clone the repository and install the dependencies:
+```bash
+git clone https://github.com/saurabh222007/voice-assistant-.git
+cd voice-assistant-
+npm install
+```
+
+### 3. Run Locally
+```bash
+# Starts the Wrangler edge development server
+npm run dev
+```
+Open the provided `localhost` link in your browser. 
+
+---
+
+## 🌐 Deploying to Cloudflare Pages (Free)
+
+Deploying takes roughly 2 minutes directly from GitHub.
+
+1. Push this repository to your GitHub account.
+2. In your Cloudflare dashboard, go to **Workers & Pages** -> **Create application** -> **Pages** -> **Connect to Git**.
+3. Select this repository.
+4. Configure the build settings:
+   - **Framework preset**: `None`
+   - **Build command**: `npm install`
+   - **Build output directory**: `public`
+5. Click **Save and Deploy**. Cloudflare automatically detects the `functions/` directory and creates the edge endpoints!
+
+---
+
+## 🔒 Security & Privacy Statement
+
+This application enforces a strict client-side model regarding user identity. **No databases are connected**, and no personal data or chat logs are collected server-side.
+1. The **Gemini API Key** is requested via frontend UI and saved to `localStorage`.
+2. It's securely injected into requests flowing to the Cloudflare endpoints to protect from CORS blocks and inject systemic prompts, passing directly to Google.
+
+<br>
+<p align="center">Made with ❤️ by <strong>Someone</strong></p>

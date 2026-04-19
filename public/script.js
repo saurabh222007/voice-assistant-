@@ -77,7 +77,7 @@
 
   async function checkConnection() {
     try {
-      const r = await fetch('/api/settings?key=_ping', { signal: AbortSignal.timeout(5000) });
+      const r = await fetch('/', { method: 'HEAD', signal: AbortSignal.timeout(5000) });
       state.isOnline = r.ok;
     } catch { state.isOnline = false; }
     const dot = document.getElementById('statusDot');
