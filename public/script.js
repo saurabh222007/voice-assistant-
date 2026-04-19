@@ -504,22 +504,43 @@
       const resp = await fetch(`/api/youtube/search?q=${encodeURIComponent(query + ' audio')}`);
       const data = await resp.json();
       removeTypingIndicator();
-      if (!data.results?.length) { addChatMessage('assistant', `No results for "${query}". Try different words.`); speak(`Sorry, couldn't find ${query}.`); return; }
-      const resultsHtml = `<div class="search-results">${data.results.map(r => `<div class="search-result-item" onclick="window.app.playTrack('${r.id}',${JSON.stringify(r.title).replace(/'/g,"\\'")},'${(r.author||'').replace(/'/g,"\\'")}')"><div class="search-result-thumb">${r.thumbnail?`<img src="${r.thumbnail}" alt="" onerror="this.parentElement.innerHTML='<i class=\\'fas fa-music\\' style=\\'padding:10px;color:var(--red-matte)\\'></i>'">`:'<i class="fas fa-music" style="padding:10px;color:var(--red-matte)"></i>'}</div><div class="search-result-info"><div class="search-result-title">${r.title}</div><div class="search-result-artist">${r.author||'Unknown'} • ${formatDuration(r.duration)}</div></div><i class="fas fa-play" style="color:var(--red-soft);font-size:12px;"></i></div>`).join('')}</div>`;
+      if (!data.results?.length) { 
+        addChatMessage('assistant', `No results for "${query}". Try different words.`); 
+        speak(`Sorry, couldn't find ${query}.`); 
+        return; 
+      }
+      
+      const resultsHtml = `<div class="search-results">${data.results.map((r, idx) => `<div class="search-result-item" onclick="window.app.playTrack('${r.id}',${JSON.stringify(r.title).replace(/'/g,"\\'")},'${(r.author||'').replace(/'/g,"\\'")}', ${JSON.stringify(data.results.slice(idx + 1)).replace(/'/g,"\\'")})"><div class="search-result-thumb">${r.thumbnail?`<img src="${r.thumbnail}" alt="" onerror="this.parentElement.innerHTML='<i class=\\'fas fa-music\\' style=\\'padding:10px;color:var(--red-matte)\\'></i>'">`:'<i class="fas fa-music" style="padding:10px;color:var(--red-matte)"></i>'}</div><div class="search-result-info"><div class="search-result-title">${r.title}</div><div class="search-result-artist">${r.author||'Unknown'} • ${formatDuration(r.duration)}</div></div><i class="fas fa-play" style="color:var(--red-soft);font-size:12px;"></i></div>`).join('')}</div>`;
       addChatMessage('assistant', `Found results for "${query}":` + resultsHtml);
+      
       const first = data.results[0];
+      const remaining = data.results.slice(1);
       speak(`Playing ${first.title} by ${first.author || 'unknown artist'}.`);
-      playTrack(first.id, first.title, first.author);
-    } catch(err) { removeTypingIndicator(); addChatMessage('assistant', 'Music search failed: ' + err.message); }
+      playTrack(first.id, first.title, first.author, remaining);
+    } catch(err) { 
+      removeTypingIndicator(); 
+      addChatMessage('assistant', 'Music search failed: ' + err.message); 
+    }
   }
 
-  async function playTrack(videoId, title, author) {
+  async function playTrack(videoId, title, author, queue = []) {
     try {
-      showMusicPlayer(title || 'Loading...', author || ''); setPlayPauseIcon(false);
+      showMusicPlayer(title || 'Loading...', author || ''); 
+      setPlayPauseIcon(false);
+      
       const resp = await fetch(`/api/youtube/stream?id=${videoId}`);
       const data = await resp.json();
+      
       if (data.error || !data.audioUrl) {
-        showToast('Streaming unavailable for this track.', 'error'); return;
+        if (queue && queue.length > 0) {
+          const next = queue[0];
+          const remaining = queue.slice(1);
+          showToast(`Stream unavailable. Trying: ${next.title}...`, 'info');
+          playTrack(next.id, next.title, next.author, remaining);
+          return;
+        }
+        showToast('Streaming unavailable for all sources.', 'error'); 
+        return;
       }
       
       // Keep "playing" state intact while switching source natively
@@ -529,7 +550,10 @@
       // Update UI beforehand
       state.currentTrack = { id: videoId, title: data.title||title, author: data.author||author };
       showMusicPlayer(data.title||title||'Unknown', data.author||author||'');
-      if (data.thumbnail) { const t = document.getElementById('musicThumb'); if (t) t.innerHTML = `<img src="${data.thumbnail}" alt="" onerror="this.parentElement.innerHTML='<i class=\\'fas fa-music\\'></i>'">`; }
+      if (data.thumbnail) { 
+        const t = document.getElementById('musicThumb'); 
+        if (t) t.innerHTML = `<img src="${data.thumbnail}" alt="" onerror="this.parentElement.innerHTML='<i class=\\'fas fa-music\\'></i>'">`; 
+      }
       updateStandbyMusic();
 
       try { 
@@ -542,7 +566,6 @@
         setPlayPauseIcon(false);
         
         // Autoplay Policy Exception! 
-        // Speak using TTS (which is exempt from Autoplay blocks!)
         speak('I found it. Please tap anywhere on the screen to enable audio.');
         showToast('Tap anywhere to play music', 'info');
         
@@ -556,7 +579,16 @@
         document.addEventListener('click', tapToPlay);
         document.addEventListener('touchstart', tapToPlay);
       }
-    } catch(err) { showToast('Error playing: ' + err.message, 'error'); }
+    } catch(err) { 
+      if (queue && queue.length > 0) {
+        const next = queue[0];
+        const remaining = queue.slice(1);
+        showToast('Connection issue. Trying next source...', 'info');
+        playTrack(next.id, next.title, next.author, remaining);
+      } else {
+        showToast('Error playing: ' + err.message, 'error'); 
+      }
+    }
   }
 
   function togglePlayPause() {
