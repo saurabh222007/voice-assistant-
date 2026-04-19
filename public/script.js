@@ -423,11 +423,11 @@
   }
 
   // ============ MESSAGES ============
-  async function sendMessage() {
+  async function sendMessage(overrideText=null) {
     const input = document.getElementById('chatInput');
-    const message = input.value.trim();
+    const message = overrideText || input.value.trim();
     if (!message || state.isProcessing) return;
-    input.value = '';
+    if (!overrideText) input.value = '';
 
     const welcome = document.getElementById('welcomeMsg');
     if (welcome) welcome.remove();
@@ -521,15 +521,41 @@
       if (data.error || !data.audioUrl) {
         showToast('Streaming unavailable for this track.', 'error'); return;
       }
+      
+      // Keep "playing" state intact while switching source natively
+      state.audioPlayer.loop = false;
       state.audioPlayer.src = data.audioUrl;
-      state.audioPlayer.crossOrigin = 'anonymous';
-      try { await state.audioPlayer.play(); } catch(e) { showToast('Click play to start (browser requires interaction)', 'error'); }
+      
+      // Update UI beforehand
       state.currentTrack = { id: videoId, title: data.title||title, author: data.author||author };
-      state.isPlaying = true; setPlayPauseIcon(true);
       showMusicPlayer(data.title||title||'Unknown', data.author||author||'');
       if (data.thumbnail) { const t = document.getElementById('musicThumb'); if (t) t.innerHTML = `<img src="${data.thumbnail}" alt="" onerror="this.parentElement.innerHTML='<i class=\\'fas fa-music\\'></i>'">`; }
-      // Update standby music
       updateStandbyMusic();
+
+      try { 
+        const p = state.audioPlayer.play();
+        if (p !== undefined) await p;
+        state.isPlaying = true; 
+        setPlayPauseIcon(true);
+      } catch(e) { 
+        state.isPlaying = false;
+        setPlayPauseIcon(false);
+        
+        // Autoplay Policy Exception! 
+        // Speak using TTS (which is exempt from Autoplay blocks!)
+        speak('I found it. Please tap anywhere on the screen to enable audio.');
+        showToast('Tap anywhere to play music', 'info');
+        
+        const tapToPlay = () => {
+           state.audioPlayer.play().catch(()=>{});
+           state.isPlaying = true;
+           setPlayPauseIcon(true);
+           document.removeEventListener('click', tapToPlay);
+           document.removeEventListener('touchstart', tapToPlay);
+        };
+        document.addEventListener('click', tapToPlay);
+        document.addEventListener('touchstart', tapToPlay);
+      }
     } catch(err) { showToast('Error playing: ' + err.message, 'error'); }
   }
 

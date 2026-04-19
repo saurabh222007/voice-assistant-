@@ -125,61 +125,130 @@ app.get('/news', async (c) => {
   }
 });
 
-// ============ YOUTUBE (PIPED) API ============
-// Search using Piped API
+// ============ YOUTUBE API WITH FALLBACKS ============
+const instances = [
+  { type: 'invidious', url: 'https://yt.chocolatemoo53.com/api/v1' },
+  { type: 'invidious', url: 'https://inv.thepixora.com/api/v1' },
+  { type: 'invidious', url: 'https://invidious.nerdvpn.de/api/v1' },
+  { type: 'piped', url: 'https://pipedapi.lunar.icu' },
+  { type: 'piped', url: 'https://pipedapi.kavin.rocks' }
+];
+
 app.get('/youtube/search', async (c) => {
-  try {
-    const q = c.req.query('q');
-    if (!q) return c.json({ error: 'Query required' }, 400);
+  const q = c.req.query('q');
+  if (!q) return c.json({ error: 'Query required' }, 400);
 
-    const resp = await fetch(`https://pipedapi.kavin.rocks/search?q=${encodeURIComponent(q)}&filter=music_songs`);
-    if (!resp.ok) return c.json({ error: 'Failed to search music' }, 500);
+  for (const instance of instances) {
+    try {
+      const searchUrl = instance.type === 'invidious' 
+        ? `${instance.url}/search?q=${encodeURIComponent(q)}` 
+        : `${instance.url}/search?q=${encodeURIComponent(q)}&filter=music_songs`;
 
-    const data = await resp.json() as any;
-    
-    // Map Piped response to our expected format
-    const results = (data.items || []).slice(0, 5).map((v: any) => ({
-      id: v.url.replace('/watch?v=', ''),
-      title: v.title,
-      author: v.uploaderName || '',
-      duration: v.duration,
-      thumbnail: v.thumbnail || '',
-      instance: 'piped'
-    }));
+      const resp = await fetch(searchUrl, { signal: AbortSignal.timeout(4000) });
+      if (!resp.ok) continue;
 
-    return c.json({ results });
-  } catch (e: any) {
-    return c.json({ error: e.message, results: [] }, 500);
+      const data = await resp.json() as any;
+      let results = [];
+
+      if (instance.type === 'invidious') {
+        results = data.filter((v: any) => v.type === 'video').slice(0, 5).map((v: any) => ({
+          id: v.videoId,
+          title: v.title,
+          author: v.author || '',
+          duration: v.lengthSeconds || 0,
+          thumbnail: v.videoThumbnails?.[0]?.url || '',
+          instance: 'invidious'
+        }));
+      } else {
+        results = (data.items || []).slice(0, 5).map((v: any) => ({
+          id: v.url.replace('/watch?v=', ''),
+          title: v.title,
+          author: v.uploaderName || '',
+          duration: v.duration,
+          thumbnail: v.thumbnail || '',
+          instance: 'piped'
+        }));
+      }
+
+      if (results.length > 0) {
+        return c.json({ results });
+      }
+    } catch (e) {
+      continue;
+    }
   }
+
+  return c.json({ error: 'Failed to search music across all instances', results: [] }, 500);
 });
 
-// Stream using Piped API
 app.get('/youtube/stream', async (c) => {
+  const videoId = c.req.query('id');
+  if (!videoId) return c.json({ error: 'Video ID required' }, 400);
+
+  for (const instance of instances) {
+    try {
+      const streamUrl = instance.type === 'invidious' 
+        ? `${instance.url}/videos/${videoId}` 
+        : `${instance.url}/streams/${videoId}`;
+
+      const resp = await fetch(streamUrl, { signal: AbortSignal.timeout(4000) });
+      if (!resp.ok) continue;
+
+      const data = await resp.json() as any;
+      let audioUrl = null;
+
+      if (instance.type === 'invidious') {
+        const audioStreams = data.formatStreams?.filter((s: any) => s.type?.includes('audio') || s.itag == 140) || [];
+        const adaptive = data.adaptiveFormats?.filter((s: any) => s.type?.includes('audio')) || [];
+        const best = audioStreams[0] || adaptive[0];
+        if (best) audioUrl = best.url;
+      } else {
+        const audioStreams = data.audioStreams || [];
+        const bestAudio = audioStreams.find((s: any) => s.mimeType.includes('audio/mp4')) || audioStreams[0];
+        if (bestAudio) audioUrl = bestAudio.url;
+      }
+
+      if (audioUrl) {
+        if (audioUrl.includes('googlevideo.com')) {
+          audioUrl = `/api/youtube/proxy?url=${encodeURIComponent(audioUrl)}`;
+        }
+        return c.json({
+          audioUrl,
+          title: data.title || '',
+          author: data.author || data.uploader || '',
+          duration: data.lengthSeconds || data.duration || 0,
+          thumbnail: data.videoThumbnails?.[0]?.url || data.thumbnailUrl || ''
+        });
+      }
+    } catch (e) {
+      continue;
+    }
+  }
+
+  return c.json({ error: 'Failed to fetch stream from all instances' }, 500);
+});
+
+app.get('/youtube/proxy', async (c) => {
+  const url = c.req.query('url');
+  if (!url) return c.text('Missing url', 400);
   try {
-    const videoId = c.req.query('id');
-    if (!videoId) return c.json({ error: 'Video ID required' }, 400);
-
-    const resp = await fetch(`https://pipedapi.kavin.rocks/streams/${videoId}`);
-    if (!resp.ok) return c.json({ error: 'Failed to fetch stream details' }, 500);
-
-    const data = await resp.json() as any;
-    
-    // Find highest quality audio-only stream (usually m4a or webm)
-    const audioStreams = data.audioStreams || [];
-    if (audioStreams.length === 0) return c.json({ error: 'No audio streams found' }, 404);
-
-    // Prefer m4a if available, otherwise fallback
-    const bestAudio = audioStreams.find((s: any) => s.mimeType.includes('audio/mp4')) || audioStreams[0];
-
-    return c.json({
-      audioUrl: bestAudio.url, // Piped direct stream URLs handle their own CORS
-      title: data.title,
-      author: data.uploader,
-      duration: data.duration,
-      thumbnail: data.thumbnailUrl || ''
+    const resp = await fetch(decodeURIComponent(url), {
+      headers: {
+        'User-Agent': c.req.header('User-Agent') || 'Mozilla/5.0'
+      }
     });
-  } catch (e: any) {
-    return c.json({ error: e.message }, 500);
+
+    if (!resp.ok) return c.text('Proxy fetch failed', resp.status as any);
+
+    const newHeaders = new Headers(resp.headers);
+    newHeaders.set('Access-Control-Allow-Origin', '*');
+    
+    return new Response(resp.body, {
+      status: resp.status,
+      headers: newHeaders
+    });
+  } catch (e) {
+    return c.text('Proxy exception', 500);
   }
 });
 
