@@ -559,7 +559,7 @@ html,body{
   .standby-music{top:10px;}
 }
 
-/* ============ FUSION CLOCK STYLE (RECREATION) ============ */
+/* ============ FUSION CLOCK STYLE (EXACT AS PROVIDED) ============ */
 @import url('https://fonts.googleapis.com/css?family=BenchNine:300,400');
 
 .fusion-clock-container {
@@ -580,9 +580,9 @@ html,body{
   width: 220px;
   height: 1px;
   background: red;
-  left: 100px;
+  left: 50%;
   top: 50%;
-  margin-top: -1px;
+  transform: translateY(-50%);
   z-index: 200;
   box-shadow: 0 3px 3px rgba(0,0,0,0.4);
 }
@@ -599,129 +599,217 @@ html,body{
 .fusion-clock-container .spear:before {
   content: '';
   position: absolute;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: #111;
-  left: -4px;
-  top: -4px;
-  border: 1px solid red;
+  border: 7px solid transparent;
+  border-left-color: red;
+  left: 2px;
+  top: -7px;
 }
 
 .fusion-clock-container .clock-analog {
-  position: absolute;
-  left: 0; top: 0; right: 0; bottom: 0;
-  margin: auto;
-  z-index: 10;
-  width: 480px;
-  height: 480px;
+  width: 440px;
+  height: 440px;
   border-radius: 50%;
+  margin: 20px;
+  background: #fff;
+  z-index: 5;
+  position: relative;
+  box-shadow: 0 0 25px 3px #000 inset;
 }
 
-.fusion-clock-container .hour, 
-.fusion-clock-container .minute, 
 .fusion-clock-container .second, 
-.fusion-clock-container .dail {
+.fusion-clock-container .minute, 
+.fusion-clock-container .hour {
+  width: 20px;
+  height: 20px;
   position: absolute;
-  left: 0; top: 0; right: 0; bottom: 0;
+  left: 0; right: 0; top: 0; bottom: 0;
   margin: auto;
-  z-index: 10;
-  width: 480px;
-  height: 480px;
-  border-radius: 50%;
-  transition: all 0.5s cubic-bezier(0.18, 0.89, 0.32, 1.28);
+  z-index: 100;
+  transition: 0.2s 0.2s ease-in;
+  transform: rotate(90deg);
 }
 
 .fusion-clock-container .clock-analog span {
   position: absolute;
-  width: 480px;
+  width: 20px;
   height: 20px;
-  left: 0;
-  top: 50%;
-  margin-top: -10px;
-  text-align: right;
-  padding-right: 10px;
-  font-size: 14px;
+  line-height: 20px;
+  text-align: center;
+  transform-origin: 50% 50%;
+  z-index: 5;
 }
 
-.fusion-clock-container .hour { z-index: 100; }
-.fusion-clock-container .hour span {
-  font-size: 30px;
-  padding-right: 80px;
+.fusion-clock-container .clock-analog span:after {
+  content: '';
+  width: 4px;
+  height: 1px;
+  background: #000;
+  position: absolute;
+  left: 130%;
+  top: -10%;
+  opacity: 0.3;
+}
+
+.fusion-clock-container .clock-analog span:nth-child(5n + 2):after {
+  width: 7px;
+  opacity: 1;
+  left: 110%;
+}
+
+.fusion-clock-container .hour {
+  z-index: 150;
+  font-size: 32px;
   font-weight: 400;
 }
 
-.fusion-clock-container .minute { z-index: 80; }
-.fusion-clock-container .minute span {
-  font-size: 20px;
-  padding-right: 25px;
-}
-
-.fusion-clock-container .second { z-index: 60; }
-.fusion-clock-container .second span {
-  font-size: 14px;
-  padding-right: 15px;
+.fusion-clock-container .hour span:after {
+  opacity: 1;
+  width: 4px;
+  height: 1px;
   color: #666;
+  transform: translate(5px , 12px); 
 }
 
-.fusion-clock-container .dail { z-index: 40; }
-.fusion-clock-container .dail span {
+.fusion-clock-container .hour:after {
+  content: '';
+  background: #fff;
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50% , -50%);
+  width: 250px;
+  height: 250px;
+  border-radius: 50%;
+  box-shadow: 0 0 15px 2px rgba(0,0,0,.6) inset;
+}
+
+.fusion-clock-container .minute {
+  color: #fff;
+  font-size: 16px;
+}
+
+.fusion-clock-container .minute span:after {
+  background: #fff; 
+  transform: translate(10px, -7px) rotate(-9deg);
+}
+
+.fusion-clock-container .minute:after {
+  content: '';
+  background: #333;
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50% , -50%);
+  width: 350px;
+  height: 350px;
+  border-radius: 50%;
+  box-shadow: 0 0 25px 2px #000 inset;
+}
+
+.fusion-clock-container .second {
   font-size: 12px;
-  color: #333;
+  color: #444; 
+}
+
+.fusion-clock-container .second span:after {
+  transform: translate(5px , -10px);
+}
+
+.fusion-clock-container .dail {
+  width: 20px;
+  height: 20px;
+  position: absolute;
+  left: 0; right: 0; top: 0; bottom: 0;
+  margin: auto;
+  z-index: 100;
+}
+
+.fusion-clock-container .dail span {
+  width: 20px;
+  height: 20px;
+  line-height: 20px;
+  text-indent: 1000px;
+  overflow: hidden;
+  position: absolute;
+  transform-origin: 50% 50%;
+}
+
+.fusion-clock-container .dail span:after {
+  content: '';
+  position: absolute;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background-color: rgb(125,126,125);
+  background-image: linear-gradient(to right, rgba(125,126,125,1) 0%,rgba(14,14,14,1) 100%);
+  left: 50%;
+  top: 50%;
+  transform: translate(-50% , -50%);
+}
+
+.fusion-clock-container .dail span:nth-child(5n + 1):after {
+  width: 8px;
 }
 
 .fusion-clock-container .clock-digital {
   position: absolute;
-  left: 0; top: 0; right: 0; bottom: 0;
-  margin: auto;
-  z-index: 5;
+  z-index: 200;
+  height: 444px;
+  width: 224px;
+  background: #090909;
+  left: 18px;
+  top: 18px;
+  border-radius: 220px 0 0 220px;
+  box-shadow: 5px 0 15px #000;
+}
+
+.fusion-clock-container .clock-digital:after {
+  content: '';
+  position: absolute;
+  border: 15px solid #8e0a0a;
+  border-right: none;
+  height: 400px;
   width: 200px;
-  height: 200px;
-  border-radius: 50%;
-  background: #111;
-  box-shadow: 0 0 15px #000;
-  border: 1px solid rgba(255,255,255,0.05);
+  border-radius: 220px 0 0 220px;
+  left: 25px;
+  top: 25px;
 }
 
 .fusion-clock-container .clock-digital .time {
+  background: #111;
   position: absolute;
-  left: 0; top: 0; right: 0; bottom: 0;
-  margin: auto;
-  z-index: 10;
-  width: 200px;
-  height: 40px;
-  line-height: 40px;
-  text-align: center;
+  right: 20px;
+  top: 50%;
+  transform: translateY(-50%);
   color: #fff;
-  font-size: 36px;
+  border-radius: 50px;
+  font-size: 24px;
+  padding: 2px 20px;
+  box-shadow: 0 0 15px #000 inset;
 }
 
 .fusion-clock-container .clock-digital .day {
+  background: #111;
   position: absolute;
-  left: 0;
-  width: 200px;
-  top: 30px;
-  text-align: center;
+  right: 20px;
+  bottom: 100px;
   color: #fff;
   border-radius: 20px;
   box-shadow: 0 0 15px #000 inset;
-  padding: 2px 0;
-  font-size: 14px;
-  border: 1px solid rgba(255,255,255,0.05);
+  padding: 2px 20px;
+  font-size: 16px;
 }
 
 .fusion-clock-container .clock-digital .date {
+  background: #111;
   position: absolute;
-  left: 0;
-  width: 200px;
-  bottom: 30px;
-  text-align: center;
+  right: 20px;
+  top: 100px;
   color: #fff;
   border-radius: 20px;
-  font-size: 14px;
+  font-size: 16px;
   box-shadow: 0 0 10px #000 inset;
-  padding: 2px 0;
-  border: 1px solid rgba(255,255,255,0.05);
+  padding: 2px 20px;
 }
 
 /* Fusion Clock Responsive Scaling */
@@ -740,6 +828,7 @@ html,body{
     transform: scale(0.5);
   }
 }
+
 
 
 /* ============ COPYRIGHT ============ */

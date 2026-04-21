@@ -977,25 +977,26 @@
     const container = document.querySelector('.fusion-clock-container');
     if (!container) return;
     
-    const generateSpans = (selector, count, step) => {
+    // Exact dailer logic from user: span with rotate + translateX
+    const dailer = (selector, size) => {
       const el = container.querySelector(selector);
       if (!el) return;
       let html = '';
-      for (let i = 0; i < count; i++) {
-        html += `<span style="transform: rotate(${i * step}deg)">${i}</span>`;
+      for (let s = 0; s < 60; s++) {
+        html += `<span style="transform: rotate(${6 * s}deg) translateX(${size}px)">${s}</span>`;
       }
       el.innerHTML = html;
     };
 
-    generateSpans('.second', 60, 6);
-    generateSpans('.minute', 60, 6);
-    generateSpans('.dail', 60, 6);
+    dailer('.second', 195);
+    dailer('.minute', 145);
+    dailer('.dail', 230);
     
     const hourEl = container.querySelector('.hour');
     if (hourEl) {
       let html = '';
-      for (let i = 0; i < 12; i++) {
-        html += `<span style="transform: rotate(${i * 30}deg)">${i == 0 ? 12 : i}</span>`;
+      for (let s = 1; s < 13; s++) {
+        html += `<span style="transform: rotate(${30 * s}deg) translateX(100px)">${s}</span>`;
       }
       hourEl.innerHTML = html;
     }
@@ -1005,35 +1006,35 @@
     const container = document.querySelector('.fusion-clock-container');
     if (!container) return;
     
-    const now = new Date(),
-      s = now.getSeconds(),
-      m = now.getMinutes(),
-      h = now.getHours(),
-      timeS = now.toLocaleString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true }),
-      dayS = fusionClockData.days[now.getDay()],
-      dateS = now.getDate() + ' . ' + fusionClockData.months[now.getMonth()];
+    const date = new Date(),
+      second = date.getSeconds(),
+      minute = date.getMinutes(),
+      hour = date.getHours(),
+      timeS = date.toLocaleString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true }),
+      day = date.getDay(),
+      month = date.getMonth(),
+      dateStr = date.getDate() + ' . ' + fusionClockData.months[month];
 
-    const degS = -(s * 6),
-          degM = -(m * 6),
-          degH = -((h % 12 + m / 60) * 30);
+    // User's exact rotational logic
+    const ds = second * -6,
+          dm = minute * -6,
+          dh = hour * -30;
 
     const secEl = container.querySelector('.second');
     const minEl = container.querySelector('.minute');
     const hourEl = container.querySelector('.hour');
-    const dailEl = container.querySelector('.dail');
     
-    if (secEl) secEl.style.transform = `rotate(${degS}deg)`;
-    if (minEl) minEl.style.transform = `rotate(${degM}deg)`;
-    if (hourEl) hourEl.style.transform = `rotate(${degH}deg)`;
-    if (dailEl) dailEl.style.transform = `rotate(${degS}deg)`;
+    if (secEl) secEl.style.transform = `rotate(${ds}deg)`;
+    if (minEl) minEl.style.transform = `rotate(${dm}deg)`;
+    if (hourEl) hourEl.style.transform = `rotate(${dh}deg)`;
 
     const timeEl = container.querySelector('.clock-digital .time');
     const dayEl = container.querySelector('.clock-digital .day');
     const dateEl = container.querySelector('.clock-digital .date');
     
     if (timeEl) timeEl.textContent = timeS;
-    if (dayEl) dayEl.textContent = dayS;
-    if (dateEl) dateEl.textContent = dateS;
+    if (dayEl) dayEl.textContent = fusionClockData.days[day];
+    if (dateEl) dateEl.textContent = dateStr;
   }
 
   function updateStandbyClock() {
