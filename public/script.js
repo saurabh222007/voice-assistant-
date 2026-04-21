@@ -25,6 +25,11 @@
     isOnline: true, lastWakeTime: 0, userInteracted: false
   };
 
+  const fusionClockData = {
+    months: ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"],
+    days: ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
+  };
+
   state.audioPlayer.volume = state.volume;
 
   const weatherCodes = {
@@ -258,6 +263,7 @@
             <option value="minimal" ${state.clockStyle==='minimal'?'selected':''}>Minimal</option>
             <option value="neon" ${state.clockStyle==='neon'?'selected':''}>Neon</option>
             <option value="analog" ${state.clockStyle==='analog'?'selected':''}>Analog</option>
+            <option value="fusion" ${state.clockStyle==='fusion'?'selected':''}>Fusion ✨</option>
             <option value="aurora" ${state.clockStyle==='aurora'?'selected':''}>Aurora ✨</option>
           </select>
         </div>
@@ -954,6 +960,57 @@
     if (event.target.closest('.standby-controls') || event.target.closest('.standby-ctrl-btn') || event.target.closest('.standby-music')) return;
   }
 
+  function updateFusionClock() {
+    const container = document.querySelector('.fusion-clock-container');
+    if (!container) return;
+    const date = new Date(),
+      second = date.getSeconds(),
+      minute = date.getMinutes(),
+      hour = date.getHours(),
+      time = date.toLocaleString('en-US', { hour: 'numeric', minute: 'numeric', hour12: true }),
+      day = date.getDay(),
+      month = date.getMonth(),
+      dateStr = date.getDate() + ' . ' + fusionClockData.months[month];
+    const ds = second * -6, dm = minute * -6, dh = (hour % 12 + minute / 60) * -30;
+    const secEl = container.querySelector('.second');
+    const minEl = container.querySelector('.minute');
+    const hourEl = container.querySelector('.hour');
+    const timeEl = container.querySelector('.clock-digital .time');
+    const dayEl = container.querySelector('.clock-digital .day');
+    const dateEl = container.querySelector('.clock-digital .date');
+    if (secEl) secEl.style.transform = `rotate(${ds}deg)`;
+    if (minEl) minEl.style.transform = `rotate(${dm}deg)`;
+    if (hourEl) hourEl.style.transform = `rotate(${dh}deg)`;
+    if (timeEl) timeEl.textContent = time;
+    if (dayEl) dayEl.textContent = fusionClockData.days[day];
+    if (dateEl) dateEl.textContent = dateStr;
+  }
+
+  function initFusionClock() {
+    const container = document.querySelector('.fusion-clock-container');
+    if (!container) return;
+    const dailer = (selector, size) => {
+      const el = container.querySelector(selector);
+      if (!el) return;
+      let html = '';
+      for (let s = 0; s < 60; s++) {
+        html += `<span style="transform: rotate(${6 * s}deg) translateX(${size}px)">${s}</span>`;
+      }
+      el.innerHTML = html;
+    };
+    dailer('.second', 195);
+    dailer('.minute', 145);
+    dailer('.dail', 230);
+    const hourEl = container.querySelector('.hour');
+    if (hourEl) {
+      let html = '';
+      for (let s = 1; s < 13; s++) {
+        html += `<span style="transform: rotate(${30 * s}deg) translateX(100px)">${s}</span>`;
+      }
+      hourEl.innerHTML = html;
+    }
+  }
+
   function updateStandbyClock() {
     const container = document.getElementById('standbyClockContainer');
     if (!container) return;
@@ -979,6 +1036,17 @@
         container.innerHTML = `<div class="clock-analog-container"><div class="analog-clock">${markers}<div class="hand hour-hand" style="transform:rotate(${hDeg}deg);"></div><div class="hand minute-hand" style="transform:rotate(${mDeg}deg);"></div><div class="hand second-hand" style="transform:rotate(${sDeg}deg);"></div><div class="center-dot"></div></div><div class="analog-date">${dateS}</div></div>`;
         break;
       }
+      case 'fusion':
+        if (!container.querySelector('.fusion-clock-container')) {
+          container.innerHTML = `
+            <div class="fusion-clock-container">
+              <div class="clock-digital"><div class="date"></div><div class="time"></div><div class="day"></div></div>
+              <div class="clock-analog"><div class="spear"></div><div class="hour"></div><div class="minute"></div><div class="second"></div><div class="dail"></div></div>
+            </div>`;
+          initFusionClock();
+        }
+        updateFusionClock();
+        break;
       case 'aurora':
         container.innerHTML = `<div class="standby-clock clock-aurora"><div class="clock-time">${timeS}</div><div class="clock-date">${dateS}</div><div class="clock-greeting">${getGreeting()}</div></div>`;
         break;
@@ -986,7 +1054,7 @@
   }
 
   function cycleClockStyle() {
-    const styles = ['digital','minimal','neon','analog','aurora'];
+    const styles = ['digital','minimal','neon','analog','fusion','aurora'];
     state.clockStyle = styles[(styles.indexOf(state.clockStyle)+1)%styles.length];
     localStorage.setItem('clock_style', state.clockStyle);
     updateStandbyClock();

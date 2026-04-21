@@ -127,14 +127,15 @@ app.get('/news', async (c) => {
 
 // ============ YOUTUBE API WITH FALLBACKS ============
 const instances = [
+  { type: 'piped', url: 'https://pipedapi.kavin.rocks' },
+  { type: 'piped', url: 'https://pipedapi.lunar.icu' },
+  { type: 'piped', url: 'https://pipedapi.nexus-it.pt' },
+  { type: 'piped', url: 'https://pipedapi.drgns.space' },
   { type: 'invidious', url: 'https://iv.ggtyler.dev/api/v1' },
-  { type: 'invidious', url: 'https://invidious.ducks.party/api/v1' },
+  { type: 'invidious', url: 'https://invidious.nerdvpn.de/api/v1' },
   { type: 'invidious', url: 'https://inv.thepixora.com/api/v1' },
   { type: 'invidious', url: 'https://yt.chocolatemoo53.com/api/v1' },
-  { type: 'piped', url: 'https://pipedapi.kavin.rocks' },
-  { type: 'piped', url: 'https://pipedapi.nexus-it.pt' },
-  { type: 'piped', url: 'https://pipedapi.lunar.icu' },
-  { type: 'piped', url: 'https://piped-api.garudalinux.org' }
+  { type: 'invidious', url: 'https://invidious.no-logs.com/api/v1' }
 ];
 
 app.get('/youtube/search', async (c) => {
