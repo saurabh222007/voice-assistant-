@@ -763,18 +763,6 @@ html,body{
   box-shadow: 5px 0 15px #000;
 }
 
-.fusion-clock-container .clock-digital:after {
-  content: '';
-  position: absolute;
-  border: 15px solid #8e0a0a;
-  border-right: none;
-  height: 400px;
-  width: 200px;
-  border-radius: 220px 0 0 220px;
-  left: 25px;
-  top: 25px;
-}
-
 .fusion-clock-container .clock-digital .time {
   background: #111;
   position: absolute;
