@@ -973,55 +973,67 @@
     if (event.target.closest('.standby-controls') || event.target.closest('.standby-ctrl-btn') || event.target.closest('.standby-music')) return;
   }
 
-  function updateFusionClock() {
-    const container = document.querySelector('.fusion-clock-container');
-    if (!container) return;
-    const date = new Date(),
-      second = date.getSeconds(),
-      minute = date.getMinutes(),
-      hour = date.getHours(),
-      time = date.toLocaleString('en-US', { hour: 'numeric', minute: 'numeric', hour12: true }),
-      day = date.getDay(),
-      month = date.getMonth(),
-      dateStr = date.getDate() + ' . ' + fusionClockData.months[month];
-    const ds = second * -6, dm = minute * -6, dh = (hour % 12 + minute / 60) * -30;
-    const secEl = container.querySelector('.second');
-    const minEl = container.querySelector('.minute');
-    const hourEl = container.querySelector('.hour');
-    const timeEl = container.querySelector('.clock-digital .time');
-    const dayEl = container.querySelector('.clock-digital .day');
-    const dateEl = container.querySelector('.clock-digital .date');
-    if (secEl) secEl.style.transform = `rotate(${ds}deg)`;
-    if (minEl) minEl.style.transform = `rotate(${dm}deg)`;
-    if (hourEl) hourEl.style.transform = `rotate(${dh}deg)`;
-    if (timeEl) timeEl.textContent = time;
-    if (dayEl) dayEl.textContent = fusionClockData.days[day];
-    if (dateEl) dateEl.textContent = dateStr;
-  }
-
   function initFusionClock() {
     const container = document.querySelector('.fusion-clock-container');
     if (!container) return;
-    const dailer = (selector, size) => {
+    
+    const generateSpans = (selector, count, step) => {
       const el = container.querySelector(selector);
       if (!el) return;
       let html = '';
-      for (let s = 0; s < 60; s++) {
-        html += `<span style="transform: rotate(${6 * s}deg) translateX(${size}px)">${s}</span>`;
+      for (let i = 0; i < count; i++) {
+        html += `<span style="transform: rotate(${i * step}deg)">${i}</span>`;
       }
       el.innerHTML = html;
     };
-    dailer('.second', 195);
-    dailer('.minute', 145);
-    dailer('.dail', 230);
+
+    generateSpans('.second', 60, 6);
+    generateSpans('.minute', 60, 6);
+    generateSpans('.dail', 60, 6);
+    
     const hourEl = container.querySelector('.hour');
     if (hourEl) {
       let html = '';
-      for (let s = 1; s < 13; s++) {
-        html += `<span style="transform: rotate(${30 * s}deg) translateX(100px)">${s}</span>`;
+      for (let i = 0; i < 12; i++) {
+        html += `<span style="transform: rotate(${i * 30}deg)">${i == 0 ? 12 : i}</span>`;
       }
       hourEl.innerHTML = html;
     }
+  }
+
+  function updateFusionClock() {
+    const container = document.querySelector('.fusion-clock-container');
+    if (!container) return;
+    
+    const now = new Date(),
+      s = now.getSeconds(),
+      m = now.getMinutes(),
+      h = now.getHours(),
+      timeS = now.toLocaleString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true }),
+      dayS = fusionClockData.days[now.getDay()],
+      dateS = now.getDate() + ' . ' + fusionClockData.months[now.getMonth()];
+
+    const degS = -(s * 6),
+          degM = -(m * 6),
+          degH = -((h % 12 + m / 60) * 30);
+
+    const secEl = container.querySelector('.second');
+    const minEl = container.querySelector('.minute');
+    const hourEl = container.querySelector('.hour');
+    const dailEl = container.querySelector('.dail');
+    
+    if (secEl) secEl.style.transform = `rotate(${degS}deg)`;
+    if (minEl) minEl.style.transform = `rotate(${degM}deg)`;
+    if (hourEl) hourEl.style.transform = `rotate(${degH}deg)`;
+    if (dailEl) dailEl.style.transform = `rotate(${degS}deg)`;
+
+    const timeEl = container.querySelector('.clock-digital .time');
+    const dayEl = container.querySelector('.clock-digital .day');
+    const dateEl = container.querySelector('.clock-digital .date');
+    
+    if (timeEl) timeEl.textContent = timeS;
+    if (dayEl) dayEl.textContent = dayS;
+    if (dateEl) dateEl.textContent = dateS;
   }
 
   function updateStandbyClock() {
@@ -1053,8 +1065,18 @@
         if (!container.querySelector('.fusion-clock-container')) {
           container.innerHTML = `
             <div class="fusion-clock-container">
-              <div class="clock-digital"><div class="date"></div><div class="time"></div><div class="day"></div></div>
-              <div class="clock-analog"><div class="spear"></div><div class="hour"></div><div class="minute"></div><div class="second"></div><div class="dail"></div></div>
+              <div class="clock-digital">
+                <div class="date"></div>
+                <div class="time"></div>
+                <div class="day"></div>
+              </div>
+              <div class="clock-analog">
+                <div class="spear"></div>
+                <div class="hour"></div>
+                <div class="minute"></div>
+                <div class="second"></div>
+                <div class="dail"></div>
+              </div>
             </div>`;
           initFusionClock();
         }
