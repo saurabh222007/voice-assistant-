@@ -563,10 +563,8 @@ html,body{
 @import url('https://fonts.googleapis.com/css?family=BenchNine:300,400');
 
 .fusion-clock-container {
-  position: absolute;
-  left: 50%;
-  top: 45%;
-  transform: translate(-50% , -50%);
+  position: relative;
+  margin: 0 auto;
   width: 480px;
   height: 480px;
   border-radius: 50%;
@@ -821,19 +819,19 @@ html,body{
 
 @media (max-width: 600px) {
   .fusion-clock-container {
-    transform: translate(-50%, -50%) scale(0.7);
+    transform: scale(0.7);
   }
 }
 
 @media (max-width: 400px) {
   .fusion-clock-container {
-    transform: translate(-50%, -50%) scale(0.6);
+    transform: scale(0.6);
   }
 }
 
 @media (max-width: 330px) {
   .fusion-clock-container {
-    transform: translate(-50%, -50%) scale(0.5);
+    transform: scale(0.5);
   }
 }
 
