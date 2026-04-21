@@ -112,6 +112,15 @@
     }
   }
 
+  // Global Error Handler for UI
+  window.onerror = function(msg, url, lineNo, columnNo, error) {
+    logDebug(`Global Error: ${msg} [Line ${lineNo}]`, 'error');
+    if (msg.toLowerCase().includes('terminated')) {
+      showToast('Assistant process interrupted. Reconnecting...', 'warning');
+    }
+    return false;
+  };
+
   // ============ RENDER ============
   function renderApp() {
     const root = document.getElementById('react-root') || document.getElementById('app');
@@ -769,7 +778,11 @@
       const formatted = formatMarkdown(data.response);
       addChatMessage('assistant', formatted, true); // typewriter
       speak(data.response.replace(/[*#`_]/g, '').replace(/\[.*?\]/g, ''));
-    } catch(err) { removeTypingIndicator(); addChatMessage('assistant', 'Error: ' + err.message + ' <button class="quick-action" style="margin-top:8px;" onclick="window.app.retryLast()"><i class="fas fa-rotate-right"></i> Retry</button>'); }
+    } catch(err) { 
+      removeTypingIndicator(); 
+      logDebug(`Gemini Request Failed: ${err.message}`, 'error');
+      addChatMessage('assistant', `⚠️ Error: ${err.message}. This might be a connection timeout or service interruption. <button class="quick-action" style="margin-top:8px;" onclick="window.app.retryLast()"><i class="fas fa-rotate-right"></i> Try Again</button>`); 
+    }
   }
 
   function handleTimeRequest() {

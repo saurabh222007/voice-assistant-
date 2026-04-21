@@ -182,7 +182,7 @@ app.get('/youtube/search', async (c) => {
     }
   }
 
-  return c.json({ error: 'Failed to search music across all instances', results: [] }, 500);
+  return c.json({ error: 'Music search unavailable. All backup instances failed or timed out.', results: [] }, 500);
 });
 
 app.get('/youtube/stream', async (c) => {
@@ -240,7 +240,10 @@ app.get('/youtube/proxy', async (c) => {
   const targetUrl = decodeURIComponent(url);
 
   const proxyFetch = async (target: string, attempt = 0): Promise<Response> => {
-    if (attempt > 3) return new Response('Too many redirects', { status: 508 });
+    if (attempt > 10) {
+      console.error(`Proxy redirect loop detected for: ${target}`);
+      return new Response('Too many redirects in proxy loop', { status: 508 });
+    }
 
     const headers: Record<string, string> = {
       'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
