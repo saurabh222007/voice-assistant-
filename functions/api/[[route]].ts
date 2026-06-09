@@ -3,14 +3,12 @@ import { handle } from 'hono/cloudflare-pages';
 
 const app = new Hono().basePath('/api');
 
-// Handle CORS natively in Hono automatically for everything
+// CORS middleware
 app.use('*', async (c, next) => {
   c.header('Access-Control-Allow-Origin', '*');
-  c.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, PUT, DELETE');
+  c.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   c.header('Access-Control-Allow-Headers', 'Content-Type');
-  if (c.req.method === 'OPTIONS') {
-    return c.body(null, 204 as any);
-  }
+  if (c.req.method === 'OPTIONS') return c.body(null, 204 as any);
   await next();
 });
 
@@ -56,10 +54,7 @@ app.post('/gemini', async (c) => {
     if (!resp.ok) {
       const errText = await resp.text();
       let errMsg = `Gemini API error (${resp.status})`;
-      try {
-        const errJson = JSON.parse(errText);
-        errMsg = errJson?.error?.message || errMsg;
-      } catch {}
+      try { const errJson = JSON.parse(errText); errMsg = errJson?.error?.message || errMsg; } catch {}
       return c.json({ error: errMsg }, 200);
     }
 
@@ -125,166 +120,146 @@ app.get('/news', async (c) => {
   }
 });
 
-// ============ YOUTUBE API WITH FALLBACKS ============
+// ============ YOUTUBE SEARCH (for metadata only — playback via IFrame API) ============
 const instances = [
-  { type: 'piped', url: 'https://pipedapi.kavin.rocks' },
-  { type: 'piped', url: 'https://pipedapi.lunar.icu' },
-  { type: 'piped', url: 'https://pipedapi.nexus-it.pt' },
-  { type: 'piped', url: 'https://pipedapi.drgns.space' },
-  { type: 'invidious', url: 'https://iv.ggtyler.dev/api/v1' },
+  { type: 'piped', url: 'https://api.piped.private.coffee' },
+  { type: 'invidious', url: 'https://inv.nadeko.net/api/v1' },
   { type: 'invidious', url: 'https://invidious.nerdvpn.de/api/v1' },
-  { type: 'invidious', url: 'https://inv.thepixora.com/api/v1' },
-  { type: 'invidious', url: 'https://yt.chocolatemoo53.com/api/v1' },
-  { type: 'invidious', url: 'https://invidious.no-logs.com/api/v1' }
+  { type: 'piped', url: 'https://pipedapi.kavin.rocks' },
+  { type: 'piped', url: 'https://pipedapi.adminforge.de' }
 ];
+
+async function searchYoutubeDirect(q: string) {
+  try {
+    const url = `https://www.youtube.com/results?search_query=${encodeURIComponent(q)}`;
+    const resp = await fetch(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept-Language': 'en-US,en;q=0.9',
+      },
+      signal: AbortSignal.timeout(8000)
+    });
+    if (!resp.ok) return null;
+    const html = await resp.text();
+    
+    let dataStr = null;
+    const match1 = html.match(/var ytInitialData = (\{.*?\});/);
+    const match2 = html.match(/window\["ytInitialData"\] = (\{.*?\});/);
+    
+    if (match1) dataStr = match1[1];
+    else if (match2) dataStr = match2[1];
+    
+    if (!dataStr) return null;
+    
+    const data = JSON.parse(dataStr);
+    const sectionList = data.contents?.twoColumnSearchResultsRenderer?.primaryContents?.sectionListRenderer?.contents || [];
+    const itemSection = sectionList.find((c: any) => c.itemSectionRenderer)?.itemSectionRenderer?.contents || [];
+    
+    const results = itemSection
+      .filter((v: any) => v.videoRenderer)
+      .slice(0, 10)
+      .map((v: any) => {
+        const vr = v.videoRenderer;
+        return {
+          id: vr.videoId,
+          title: vr.title?.runs?.[0]?.text || 'Unknown Title',
+          author: vr.ownerText?.runs?.[0]?.text || '',
+          duration: vr.lengthText?.simpleText || '0:00',
+          thumbnail: `https://img.youtube.com/vi/${vr.videoId}/mqdefault.jpg`,
+          instance: 'youtube_direct'
+        };
+      });
+    return results.length > 0 ? results : null;
+  } catch {
+    return null;
+  }
+}
 
 app.get('/youtube/search', async (c) => {
   const q = c.req.query('q');
   if (!q) return c.json({ error: 'Query required' }, 400);
 
+  // PRIMARY: Direct YouTube scraping
+  let results = await searchYoutubeDirect(q);
+  if (results && results.length > 0) return c.json({ results });
+
+  // FALLBACK: Piped/Invidious instances
   for (const instance of instances) {
     try {
-      const searchUrl = instance.type === 'invidious' 
-        ? `${instance.url}/search?q=${encodeURIComponent(q)}` 
+      const searchUrl = instance.type === 'invidious'
+        ? `${instance.url}/search?q=${encodeURIComponent(q)}`
         : `${instance.url}/search?q=${encodeURIComponent(q)}&filter=music_songs`;
 
-      const resp = await fetch(searchUrl, { signal: AbortSignal.timeout(4000) });
+      const resp = await fetch(searchUrl, { signal: AbortSignal.timeout(5000) });
       if (!resp.ok) continue;
 
       const data = await resp.json() as any;
-      let results = [];
+      let items = [];
 
       if (instance.type === 'invidious') {
-        results = data.filter((v: any) => v.type === 'video').slice(0, 5).map((v: any) => ({
+        const arr = Array.isArray(data) ? data : (data.items || []);
+        items = arr.filter((v: any) => v.type === 'video').slice(0, 8).map((v: any) => ({
           id: v.videoId,
           title: v.title,
           author: v.author || '',
           duration: v.lengthSeconds || 0,
-          thumbnail: v.videoThumbnails?.[0]?.url || '',
+          thumbnail: `https://img.youtube.com/vi/${v.videoId}/mqdefault.jpg`,
           instance: 'invidious'
         }));
       } else {
-        results = (data.items || []).slice(0, 5).map((v: any) => ({
-          id: v.url.replace('/watch?v=', ''),
+        items = (data.items || []).slice(0, 8).map((v: any) => ({
+          id: v.url?.replace('/watch?v=', '') || '',
           title: v.title,
           author: v.uploaderName || '',
           duration: v.duration,
-          thumbnail: v.thumbnail || '',
+          thumbnail: `https://img.youtube.com/vi/${(v.url || '').replace('/watch?v=', '')}/mqdefault.jpg`,
           instance: 'piped'
         }));
       }
 
-      if (results.length > 0) {
-        return c.json({ results });
-      }
-    } catch (e) {
+      if (items.length > 0) return c.json({ results: items });
+    } catch {
       continue;
     }
   }
 
-  return c.json({ error: 'Music search unavailable. All backup instances failed or timed out.', results: [] }, 500);
-});
-
-app.get('/youtube/stream', async (c) => {
-  const videoId = c.req.query('id');
-  if (!videoId) return c.json({ error: 'Video ID required' }, 400);
-
+  // LAST RESORT: No filter search
   for (const instance of instances) {
     try {
-      const streamUrl = instance.type === 'invidious' 
-        ? `${instance.url}/videos/${videoId}` 
-        : `${instance.url}/streams/${videoId}`;
+      const searchUrl = instance.type === 'invidious'
+        ? `${instance.url}/search?q=${encodeURIComponent(q)}`
+        : `${instance.url}/search?q=${encodeURIComponent(q)}`;
 
-      const resp = await fetch(streamUrl, { signal: AbortSignal.timeout(4000) });
+      const resp = await fetch(searchUrl, { signal: AbortSignal.timeout(5000) });
       if (!resp.ok) continue;
 
       const data = await resp.json() as any;
-      let audioUrl = null;
+      let items = [];
 
       if (instance.type === 'invidious') {
-        const audioStreams = data.formatStreams?.filter((s: any) => s.type?.includes('audio') || s.itag == 140) || [];
-        const adaptive = data.adaptiveFormats?.filter((s: any) => s.type?.includes('audio')) || [];
-        const best = audioStreams[0] || adaptive[0];
-        if (best) audioUrl = best.url;
+        const arr = Array.isArray(data) ? data : (data.items || []);
+        items = arr.filter((v: any) => v.type === 'video').slice(0, 5).map((v: any) => ({
+          id: v.videoId, title: v.title, author: v.author || '',
+          duration: v.lengthSeconds || 0,
+          thumbnail: `https://img.youtube.com/vi/${v.videoId}/mqdefault.jpg`,
+          instance: 'invidious'
+        }));
       } else {
-        const audioStreams = data.audioStreams || [];
-        const bestAudio = audioStreams.find((s: any) => s.mimeType.includes('audio/mp4')) || audioStreams[0];
-        if (bestAudio) audioUrl = bestAudio.url;
+        items = (data.items || []).slice(0, 5).map((v: any) => ({
+          id: v.url?.replace('/watch?v=', '') || '', title: v.title,
+          author: v.uploaderName || '', duration: v.duration,
+          thumbnail: `https://img.youtube.com/vi/${(v.url || '').replace('/watch?v=', '')}/mqdefault.jpg`,
+          instance: 'piped'
+        }));
       }
 
-      if (audioUrl) {
-        if (audioUrl.includes('googlevideo.com')) {
-          audioUrl = `/api/youtube/proxy?url=${encodeURIComponent(audioUrl)}`;
-        }
-        return c.json({
-          audioUrl,
-          title: data.title || '',
-          author: data.author || data.uploader || '',
-          duration: data.lengthSeconds || data.duration || 0,
-          thumbnail: data.videoThumbnails?.[0]?.url || data.thumbnailUrl || ''
-        });
-      }
-    } catch (e) {
+      if (items.length > 0) return c.json({ results: items });
+    } catch {
       continue;
     }
   }
 
-  return c.json({ error: 'Failed to fetch stream from all instances' }, 500);
-});
-
-app.get('/youtube/proxy', async (c) => {
-  const url = c.req.query('url');
-  if (!url) return c.text('Missing url', 400);
-
-  const range = c.req.header('range');
-  const targetUrl = decodeURIComponent(url);
-
-  const proxyFetch = async (target: string, attempt = 0): Promise<Response> => {
-    if (attempt > 10) {
-      console.error(`Proxy redirect loop detected for: ${target}`);
-      return new Response('Too many redirects in proxy loop', { status: 508 });
-    }
-
-    const headers: Record<string, string> = {
-      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-      'Referer': 'https://www.youtube.com/',
-      'Accept': '*/*',
-    };
-    if (range) headers['Range'] = range;
-
-    const resp = await fetch(target, { 
-      headers,
-      redirect: 'manual' 
-    });
-
-    if (resp.status >= 300 && resp.status < 400) {
-      const location = resp.headers.get('location');
-      if (location) return proxyFetch(location, attempt + 1);
-    }
-
-    const responseHeaders = new Headers();
-    const headersToCopy = ['content-type', 'content-length', 'content-range', 'accept-ranges', 'cache-control'];
-    headersToCopy.forEach(h => {
-      const val = resp.headers.get(h);
-      if (val) responseHeaders.set(h, val);
-    });
-
-    // Ensure Safari sees byte support
-    responseHeaders.set('Accept-Ranges', 'bytes');
-    responseHeaders.set('Access-Control-Allow-Origin', '*');
-    
-    return new Response(resp.body, {
-      status: resp.status,
-      statusText: resp.statusText,
-      headers: responseHeaders
-    });
-  };
-
-  try {
-    return await proxyFetch(targetUrl);
-  } catch (e) {
-    return c.text('Proxy exception: ' + (e as Error).message, 500);
-  }
+  return c.json({ error: 'Search unavailable. All sources failed.', results: [] }, 500);
 });
 
 export const onRequest = handle(app);

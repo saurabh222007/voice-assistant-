@@ -17,7 +17,7 @@
     chatHistory: [], geminiHistory: [],
     weather: null, location: null, locationName: '',
     musicQueue: [], currentTrack: null, isPlaying: false,
-    recognition: null, audioPlayer: new Audio(),
+    recognition: null,
     synth: window.speechSynthesis, standbyTimer: null,
     continuousListening: false, wakeWordDetected: false,
     settingsOpen: false, reducedMotion: localStorage.getItem('reduced_motion') === 'true',
@@ -29,8 +29,6 @@
     months: ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"],
     days: ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
   };
-
-  state.audioPlayer.volume = state.volume;
 
   const weatherCodes = {
     0:{icon:'☀️',desc:'Clear sky'},1:{icon:'🌤️',desc:'Mainly clear'},2:{icon:'⛅',desc:'Partly cloudy'},
@@ -63,10 +61,10 @@
     fetchLocation();
     checkConnection();
     setInterval(checkConnection, 30000);
+    loadYouTubeIFrameAPI();
 
     if (state.apiKey) { state.isSetup = true; showAssistant(); }
     
-    // Satisfy browser security: First user click enables audio/mic context
     document.addEventListener('click', () => {
       if (!state.userInteracted) {
         state.userInteracted = true;
@@ -75,30 +73,84 @@
         }
       }
     }, { once: true });
+  }
 
-    state.audioPlayer.addEventListener('timeupdate', updateMusicProgress);
-    state.audioPlayer.addEventListener('ended', onTrackEnd);
-    state.audioPlayer.addEventListener('playing', () => {
+  // ============ YOUTUBE IFRAME PLAYER API ============
+  let ytPlayer = null;
+  let ytReady = false;
+  let ytProgressTimer = null;
+
+  function loadYouTubeIFrameAPI() {
+    if (window.YT && window.YT.Player) { onYTApiReady(); return; }
+    const tag = document.createElement('script');
+    tag.src = 'https://www.youtube.com/iframe_api';
+    document.head.appendChild(tag);
+    window.onYouTubeIframeAPIReady = onYTApiReady;
+  }
+
+  function onYTApiReady() {
+    ytPlayer = new YT.Player('ytPlayer', {
+      height: '1', width: '1',
+      playerVars: { autoplay: 0, controls: 0, disablekb: 1, fs: 0, modestbranding: 1, rel: 0, playsinline: 1 },
+      events: {
+        onReady: () => { ytReady = true; logDebug('YouTube Player ready', 'success'); },
+        onStateChange: onYTStateChange,
+        onError: onYTError
+      }
+    });
+  }
+
+  function onYTStateChange(event) {
+    const s = event.data;
+    if (s === YT.PlayerState.PLAYING) {
       state.isPlaying = true; setPlayPauseIcon(true);
       const t = document.getElementById('musicThumb');
       if (t) t.classList.add('spinning');
-    });
-    state.audioPlayer.addEventListener('pause', () => {
+      startYTProgressUpdater();
+    } else if (s === YT.PlayerState.PAUSED) {
+      state.isPlaying = false; setPlayPauseIcon(false);
       const t = document.getElementById('musicThumb');
       if (t) t.classList.remove('spinning');
-    });
-    state.audioPlayer.addEventListener('error', (e) => {
-      const err = state.audioPlayer.error;
-      let msg = 'Unknown';
-      if (err) {
-        if (err.code === 1) msg = 'Aborted';
-        else if (err.code === 2) msg = 'Network Error';
-        else if (err.code === 3) msg = 'Decode Error';
-        else if (err.code === 4) msg = 'Source Not Supported';
-      }
-      logDebug(`Audio Player Error [Code ${err?.code || '?'}]: ${msg}`);
-      showToast('Music playback error', 'error');
-    });
+      stopYTProgressUpdater();
+    } else if (s === YT.PlayerState.ENDED) {
+      onTrackEnd();
+      stopYTProgressUpdater();
+    } else if (s === YT.PlayerState.BUFFERING) {
+      setStatus('processing', 'Buffering...');
+    }
+  }
+
+  function onYTError(event) {
+    const codes = {2:'Invalid ID',5:'HTML5 error',100:'Not found',101:'Embed blocked',150:'Embed blocked'};
+    logDebug(`YT Error: ${codes[event.data]||event.data}`);
+    showToast('Video unavailable, trying next...', 'error');
+    // Try next in queue
+    if (state.musicQueue.length > 0) {
+      const next = state.musicQueue.shift();
+      playTrack(next.id, next.title, next.author, state.musicQueue);
+    } else {
+      stopMusic();
+      addChatMessage('assistant', `⚠️ Failed to play the track. The video might be blocked from embedding. <button class="quick-action" style="margin-top:8px;" onclick="window.app.retryLast()"><i class="fas fa-rotate-right"></i> Try Another Search</button>`);
+    }
+  }
+
+  function startYTProgressUpdater() {
+    stopYTProgressUpdater();
+    ytProgressTimer = setInterval(() => {
+      if (!ytPlayer || !ytPlayer.getDuration) return;
+      const cur = ytPlayer.getCurrentTime() || 0;
+      const dur = ytPlayer.getDuration() || 0;
+      const fill = document.getElementById('musicProgressFill');
+      const curEl = document.getElementById('musicCurrentTime');
+      const durEl = document.getElementById('musicDuration');
+      if (fill && dur > 0) fill.style.width = (cur/dur)*100+'%';
+      if (curEl) curEl.textContent = formatTime(cur);
+      if (durEl) durEl.textContent = formatTime(dur);
+    }, 500);
+  }
+
+  function stopYTProgressUpdater() {
+    if (ytProgressTimer) { clearInterval(ytProgressTimer); ytProgressTimer = null; }
   }
 
   async function checkConnection() {
@@ -392,13 +444,13 @@
   }
 
   function logDebug(msg, type = 'error') {
-    const console = document.getElementById('debugConsole');
-    if (!console) return;
+    const consoleEl = document.getElementById('debugConsole');
+    if (!consoleEl) return;
     const line = document.createElement('div');
     line.className = `debug-line ${type}`;
     line.innerText = `[${new Date().toLocaleTimeString()}] ${msg}`;
-    console.prepend(line);
-    if (localStorage.getItem('debug_mode') === 'true') console.classList.add('visible');
+    consoleEl.prepend(line);
+    if (localStorage.getItem('debug_mode') === 'true') consoleEl.classList.add('visible');
     console.error(`DEBUG [${type}]: ${msg}`);
   }
 
@@ -572,9 +624,11 @@
       const resp = await fetch('/api/news'), data = await resp.json();
       removeSkeleton();
       if (!data.articles?.length) { addChatMessage('assistant', 'Couldn\'t fetch news right now.'); return; }
-      const newsHtml = `<div class="news-card">${data.articles.slice(0,5).map(a => `<div class="news-item"><div>${a.title}</div><div class="news-source">${a.source||'News'} • ${a.pubDate?new Date(a.pubDate).toLocaleDateString():''}</div></div>`).join('')}</div>`;
-      const headlines = data.articles.slice(0,3).map(a => a.title).join('. ');
-      addChatMessage('assistant', 'Here are the latest headlines:' + newsHtml); speak('Top headlines: ' + headlines);
+      const top5 = data.articles.slice(0,5);
+      const newsHtml = `<div class="news-card">${top5.map(a => `<div class="news-item"><div>${a.title}</div><div class="news-source">${a.source||'News'} • ${a.pubDate?new Date(a.pubDate).toLocaleDateString():''}</div></div>`).join('')}</div>`;
+      const allHeadlines = top5.map((a, i) => `Headline ${i+1}: ${a.title}`).join('. ');
+      addChatMessage('assistant', 'Here are the latest headlines:' + newsHtml);
+      speak('Here are today\'s top headlines. ' + allHeadlines);
     } catch(err) { removeSkeleton(); addChatMessage('assistant', 'Couldn\'t fetch news: ' + err.message); }
   }
 
@@ -583,16 +637,34 @@
     try {
       addChatMessage('assistant', `🔍 Searching for "${query}"...`);
       addTypingIndicator();
-      const resp = await fetch(`/api/youtube/search?q=${encodeURIComponent(query + ' audio')}`);
+      const resp = await fetch(`/api/youtube/search?q=${encodeURIComponent(query)}`);
       const data = await resp.json();
       removeTypingIndicator();
-      if (!data.results?.length) { 
-        addChatMessage('assistant', `No results for "${query}". Try different words.`); 
-        speak(`Sorry, couldn't find ${query}.`); 
+      if (data.error || !data.results?.length) { 
+        const errMsg = data.error || `No results for "${query}". Try different words.`;
+        addChatMessage('assistant', `⚠️ ${errMsg} <br><br> <a href="https://www.youtube.com/results?search_query=${encodeURIComponent(query)}" target="_blank" style="color:var(--gold-accent);text-decoration:underline;">Search YouTube Directly <i class="fas fa-external-link-alt" style="font-size:0.8em"></i></a> <button class="quick-action" style="margin-top:8px;" onclick="window.app.retryLast()"><i class="fas fa-rotate-right"></i> Try Again</button>`); 
+        speak(`Sorry, couldn't find music for ${query}.`); 
         return; 
       }
       
-      const resultsHtml = `<div class="search-results">${data.results.map((r, idx) => `<div class="search-result-item" onclick="window.app.playTrack('${r.id}',${JSON.stringify(r.title).replace(/'/g,"\\'")},'${(r.author||'').replace(/'/g,"\\'")}', ${JSON.stringify(data.results.slice(idx + 1)).replace(/'/g,"\\'")})"><div class="search-result-thumb">${r.thumbnail?`<img src="${r.thumbnail}" alt="" onerror="this.parentElement.innerHTML='<i class=\\'fas fa-music\\' style=\\'padding:10px;color:var(--red-matte)\\'></i>'">`:'<i class="fas fa-music" style="padding:10px;color:var(--red-matte)"></i>'}</div><div class="search-result-info"><div class="search-result-title">${r.title}</div><div class="search-result-artist">${r.author||'Unknown'} • ${formatDuration(r.duration)}</div></div><i class="fas fa-play" style="color:var(--red-soft);font-size:12px;"></i></div>`).join('')}</div>`;
+      const resultsHtml = `<div class="search-results">${data.results.map((r, idx) => {
+        const escapedTitle = (r.title || '').replace(/'/g, "\\'").replace(/"/g, '&quot;');
+        const escapedAuthor = (r.author || '').replace(/'/g, "\\'").replace(/"/g, '&quot;');
+        const remaining = data.results.slice(idx + 1);
+        // We'll store the results in a temporary global to avoid attribute bloat/syntax errors
+        if (!window.__search_results) window.__search_results = {};
+        const trackKey = `track_${r.id}_${idx}`;
+        window.__search_results[trackKey] = { id: r.id, title: r.title, author: r.author, queue: remaining };
+        
+        return `<div class="search-result-item" onclick="window.app.playFromSearchResult('${trackKey}')">
+          <div class="search-result-thumb">${r.thumbnail?`<img src="${r.thumbnail}" alt="" onerror="this.parentElement.innerHTML='<i class=\\'fas fa-music\\' style=\\'padding:10px;color:var(--red-matte)\\'></i>'">`:'<i class="fas fa-music" style="padding:10px;color:var(--red-matte)"></i>'}</div>
+          <div class="search-result-info">
+            <div class="search-result-title">${r.title}</div>
+            <div class="search-result-artist">${escapedAuthor} • ${formatDuration(r.duration)}</div>
+          </div>
+          <i class="fas fa-play" style="color:var(--red-soft);font-size:12px;"></i>
+        </div>`;
+      }).join('')}</div>`;
       addChatMessage('assistant', `Found results for "${query}":` + resultsHtml);
       
       const first = data.results[0];
@@ -601,89 +673,51 @@
       playTrack(first.id, first.title, first.author, remaining);
     } catch(err) { 
       removeTypingIndicator(); 
+      logDebug(`Music search error: ${err.message}`, 'error');
       addChatMessage('assistant', 'Music search failed: ' + err.message); 
     }
   }
 
-  async function playTrack(videoId, title, author, queue = []) {
-    try {
-      showMusicPlayer(title || 'Loading...', author || ''); 
-      setPlayPauseIcon(false);
-      
-      logDebug(`Fetching stream for: ${videoId}`, 'info');
-      const resp = await fetch(`/api/youtube/stream?id=${videoId}`);
-      if (!resp.ok) {
-        logDebug(`Stream API Error: ${resp.status}`);
-        throw new Error('Stream fetch failed');
-      }
-      const data = await resp.json();
-      
-      if (data.error || !data.audioUrl) {
-        logDebug(`Stream Data Error: ${data.error || 'No audioUrl'}`);
-        if (queue && queue.length > 0) {
-          const next = queue[0];
-          const remaining = queue.slice(1);
-          showToast(`Stream unavailable. Trying: ${next.title}...`, 'info');
-          playTrack(next.id, next.title, next.author, remaining);
-          return;
-        }
-        showToast('Streaming unavailable for all sources.', 'error'); 
-        return;
-      }
-      
-      // Keep "playing" state intact while switching source natively
-      state.audioPlayer.loop = false;
-      state.audioPlayer.src = data.audioUrl;
-      
-      // Update UI beforehand
-      state.currentTrack = { id: videoId, title: data.title||title, author: data.author||author };
-      showMusicPlayer(data.title||title||'Unknown', data.author||author||'');
-      if (data.thumbnail) { 
-        const t = document.getElementById('musicThumb'); 
-        if (t) t.innerHTML = `<img src="${data.thumbnail}" alt="" onerror="this.parentElement.innerHTML='<i class=\\'fas fa-music\\'></i>'">`; 
-      }
-      updateStandbyMusic();
+  function playFromSearchResult(key) {
+    const data = window.__search_results?.[key];
+    if (data) playTrack(data.id, data.title, data.author, data.queue);
+  }
 
-      try { 
-        const p = state.audioPlayer.play();
-        if (p !== undefined) await p;
-        state.isPlaying = true; 
-        setPlayPauseIcon(true);
-      } catch(e) { 
-        state.isPlaying = false;
-        setPlayPauseIcon(false);
-        
-        // Autoplay Policy Exception! 
-        speak('I found it. Please tap anywhere on the screen to enable audio.');
-        showToast('Tap anywhere to play music', 'info');
-        
-        const tapToPlay = () => {
-           state.audioPlayer.play().catch(()=>{});
-           state.isPlaying = true;
-           setPlayPauseIcon(true);
-           document.removeEventListener('click', tapToPlay);
-           document.removeEventListener('touchstart', tapToPlay);
-        };
-        document.addEventListener('click', tapToPlay);
-        document.addEventListener('touchstart', tapToPlay);
-      }
-    } catch(err) { 
-      if (queue && queue.length > 0) {
-        const next = queue[0];
-        const remaining = queue.slice(1);
-        showToast('Connection issue. Trying next source...', 'info');
-        playTrack(next.id, next.title, next.author, remaining);
-      } else {
-        showToast('Error playing: ' + err.message, 'error'); 
-      }
+  function playTrack(videoId, title, author, queue = []) {
+    if (!ytReady || !ytPlayer) {
+      showToast('YouTube player is loading, please wait...', 'info');
+      setTimeout(() => playTrack(videoId, title, author, queue), 1500);
+      return;
+    }
+
+    state.musicQueue = queue || [];
+    state.currentTrack = { id: videoId, title: title || 'Unknown', author: author || '' };
+    showMusicPlayer(title || 'Loading...', author || '');
+    setPlayPauseIcon(false);
+
+    const thumb = document.getElementById('musicThumb');
+    if (thumb) thumb.innerHTML = `<img src="https://img.youtube.com/vi/${videoId}/mqdefault.jpg" alt="" onerror="this.parentElement.innerHTML='<i class=\\'fas fa-music\\'></i>'">`; 
+
+    try {
+      ytPlayer.loadVideoById({ videoId: videoId, startSeconds: 0 });
+      ytPlayer.setVolume(state.volume * 100);
+      updateStandbyMusic();
+      logDebug(`Playing via YouTube IFrame: ${videoId}`, 'info');
+    } catch(e) {
+      logDebug(`YT loadVideo error: ${e.message}`);
+      showToast('Playback error. Try again.', 'error');
     }
   }
 
+  // (Local proxy code removed — not compatible with Cloudflare Pages deployment)
+
   function togglePlayPause() {
-    if (!state.audioPlayer.src) return;
-    if (state.isPlaying) { state.audioPlayer.pause(); state.isPlaying = false; }
-    else { state.audioPlayer.play(); state.isPlaying = true; }
-    setPlayPauseIcon(state.isPlaying);
+    if (!ytPlayer || !ytReady) return;
+    try {
+      const s = ytPlayer.getPlayerState();
+      if (s === YT.PlayerState.PLAYING) { ytPlayer.pauseVideo(); }
+      else { ytPlayer.playVideo(); }
+    } catch(e) {}
     updateStandbyMusic();
   }
 
@@ -695,9 +729,10 @@
   }
 
   function stopMusic() {
-    state.audioPlayer.pause(); state.audioPlayer.src = '';
-    state.isPlaying = false; state.currentTrack = null;
+    if (ytPlayer && ytReady) { try { ytPlayer.stopVideo(); } catch(e) {} }
+    state.isPlaying = false; state.currentTrack = null; state.musicQueue = [];
     setPlayPauseIcon(false);
+    stopYTProgressUpdater();
     const p = document.getElementById('musicPlayer');
     if (p) p.classList.remove('visible');
     const t = document.getElementById('musicThumb');
@@ -712,26 +747,39 @@
   }
 
   function updateMusicProgress() {
-    const fill = document.getElementById('musicProgressFill'), cur = document.getElementById('musicCurrentTime'), dur = document.getElementById('musicDuration');
-    if (!fill || !state.audioPlayer.duration) return;
-    fill.style.width = (state.audioPlayer.currentTime/state.audioPlayer.duration)*100+'%';
-    cur.textContent = formatTime(state.audioPlayer.currentTime);
-    dur.textContent = formatTime(state.audioPlayer.duration);
+    // Progress now handled by startYTProgressUpdater()
   }
 
   function seekMusic(event) {
+    if (!ytPlayer || !ytReady) return;
     const bar = document.getElementById('musicProgressBar');
-    if (!bar || !state.audioPlayer.duration) return;
+    if (!bar) return;
+    const dur = ytPlayer.getDuration() || 0;
+    if (dur <= 0) return;
     const rect = bar.getBoundingClientRect();
-    state.audioPlayer.currentTime = ((event.clientX-rect.left)/rect.width)*state.audioPlayer.duration;
+    const seekTo = ((event.clientX-rect.left)/rect.width)*dur;
+    ytPlayer.seekTo(seekTo, true);
   }
 
-  function onTrackEnd() { state.isPlaying = false; setPlayPauseIcon(false); updateStandbyMusic(); }
-  function musicPrev() { if (state.audioPlayer.currentTime > 3) state.audioPlayer.currentTime = 0; }
-  function musicNext() { onTrackEnd(); }
+  function onTrackEnd() {
+    state.isPlaying = false; setPlayPauseIcon(false); stopYTProgressUpdater();
+    // Auto-play next in queue
+    if (state.musicQueue.length > 0) {
+      const next = state.musicQueue.shift();
+      playTrack(next.id, next.title, next.author, state.musicQueue);
+    } else { updateStandbyMusic(); }
+  }
+  function musicPrev() { if (ytPlayer && ytReady) ytPlayer.seekTo(0, true); }
+  function musicNext() {
+    if (state.musicQueue.length > 0) {
+      const next = state.musicQueue.shift();
+      playTrack(next.id, next.title, next.author, state.musicQueue);
+    } else { onTrackEnd(); }
+  }
 
   function setVolume(v) {
-    state.volume = parseFloat(v); state.audioPlayer.volume = state.volume;
+    state.volume = parseFloat(v);
+    if (ytPlayer && ytReady) { try { ytPlayer.setVolume(state.volume * 100); } catch(e) {} }
     localStorage.setItem('volume', state.volume);
     const icon = document.getElementById('volumeIcon');
     if (icon) icon.className = `fas fa-volume-${v < 0.01 ? 'xmark' : v < 0.5 ? 'low' : 'high'}`;
@@ -739,10 +787,13 @@
 
   function toggleMute() {
     const slider = document.getElementById('volumeSlider');
-    if (state.audioPlayer.volume > 0) { state.audioPlayer.volume = 0; if (slider) slider.value = 0; }
-    else { state.audioPlayer.volume = state.volume || 0.8; if (slider) slider.value = state.audioPlayer.volume; }
+    if (ytPlayer && ytReady) {
+      if (!ytPlayer.isMuted()) { ytPlayer.mute(); if (slider) slider.value = 0; }
+      else { ytPlayer.unMute(); ytPlayer.setVolume(state.volume * 100); if (slider) slider.value = state.volume; }
+    }
     const icon = document.getElementById('volumeIcon');
-    if (icon) icon.className = `fas fa-volume-${state.audioPlayer.volume < 0.01 ? 'xmark' : 'high'}`;
+    const isMuted = ytPlayer && ytReady ? ytPlayer.isMuted() : false;
+    if (icon) icon.className = `fas fa-volume-${isMuted ? 'xmark' : 'high'}`;
   }
 
   function updateStandbyMusic() {
@@ -909,23 +960,55 @@
     });
   }
 
-  // ============ TTS ============
+  // ============ TTS (chunked to prevent Chrome cutoff) ============
   function speak(text) {
     if (!state.ttsEnabled || !state.synth) return;
     state.synth.cancel();
-    const u = new SpeechSynthesisUtterance(text);
-    u.rate = 1; u.pitch = 1; u.volume = 1;
+
+    // Split into sentence-sized chunks to avoid Chrome's ~200 char cutoff bug
+    const chunks = splitTextForTTS(text);
     const voices = state.synth.getVoices();
+    let selectedVoice = null;
     if (state.ttsVoice !== 'default') {
-      const v = voices.find(v => v.name === state.ttsVoice);
-      if (v) u.voice = v;
+      selectedVoice = voices.find(v => v.name === state.ttsVoice) || null;
     } else {
-      const pref = voices.find(v => v.name.includes('Google') && v.lang.startsWith('en')) || voices.find(v => v.lang.startsWith('en') && v.localService) || voices.find(v => v.lang.startsWith('en'));
-      if (pref) u.voice = pref;
+      selectedVoice = voices.find(v => v.name.includes('Google') && v.lang.startsWith('en')) || voices.find(v => v.lang.startsWith('en') && v.localService) || voices.find(v => v.lang.startsWith('en')) || null;
     }
-    u.onstart = () => { state.isSpeaking = true; setStatus('speaking', 'Speaking...'); };
-    u.onend = () => { state.isSpeaking = false; setStatus('ready', 'Ready'); if (state.continuousListening && state.isSetup) startListening(); };
-    state.synth.speak(u);
+
+    chunks.forEach((chunk, i) => {
+      const u = new SpeechSynthesisUtterance(chunk);
+      u.rate = 1; u.pitch = 1; u.volume = 1;
+      if (selectedVoice) u.voice = selectedVoice;
+      if (i === 0) u.onstart = () => { state.isSpeaking = true; setStatus('speaking', 'Speaking...'); };
+      if (i === chunks.length - 1) u.onend = () => { state.isSpeaking = false; setStatus('ready', 'Ready'); if (state.continuousListening && state.isSetup) startListening(); };
+      state.synth.speak(u);
+    });
+
+    // Chrome bug workaround: keep synth alive with periodic resume
+    if (chunks.length > 1) {
+      const keepAlive = setInterval(() => {
+        if (!state.synth.speaking) { clearInterval(keepAlive); return; }
+        state.synth.pause(); state.synth.resume();
+      }, 5000);
+    }
+  }
+
+  function splitTextForTTS(text, maxLen = 160) {
+    if (text.length <= maxLen) return [text];
+    const chunks = [];
+    // Split on sentence boundaries
+    const sentences = text.match(/[^.!?]+[.!?]+|[^.!?]+$/g) || [text];
+    let current = '';
+    for (const s of sentences) {
+      if ((current + s).length > maxLen && current.length > 0) {
+        chunks.push(current.trim());
+        current = s;
+      } else {
+        current += s;
+      }
+    }
+    if (current.trim()) chunks.push(current.trim());
+    return chunks.length > 0 ? chunks : [text];
   }
 
   // ============ LOCATION ============
@@ -1147,7 +1230,13 @@
   }
 
   function formatTime(s) { if (isNaN(s)) return '0:00'; return `${Math.floor(s/60)}:${String(Math.floor(s%60)).padStart(2,'0')}`; }
-  function formatDuration(s) { if (!s) return ''; return `${Math.floor(s/60)}:${String(s%60).padStart(2,'0')}`; }
+  function formatDuration(s) { 
+    if (!s) return ''; 
+    if (typeof s === 'string' && s.includes(':')) return s;
+    const sec = parseInt(s);
+    if (isNaN(sec)) return s;
+    return `${Math.floor(sec/60)}:${String(sec%60).padStart(2,'0')}`; 
+  }
 
   function formatMarkdown(text) {
     return text
@@ -1175,7 +1264,7 @@
   window.app = {
     startSetup, sendMessage, toggleMic, toggleStandby, handleStandbyClick,
     toggleSettings, togglePlayPause, stopMusic, seekMusic, musicPrev, musicNext,
-    playTrack, quickAction, cycleClockStyle, setClockStyle, updateApiKey,
+    playTrack, playFromSearchResult, quickAction, cycleClockStyle, setClockStyle, updateApiKey,
     updateWakeWord, toggleTTS, toggleWakeWord, toggleContinuousListening,
     logout, clearChat, copyMsg, setVolume, toggleMute, setVoice, toggleMotion, retryLast,
     toggleDebugMode
