@@ -854,7 +854,15 @@
 
   // ============ QUICK ACTIONS ============
   function quickAction(type) {
-    const actions = { weather:"What's the weather like?", news:'Tell me the latest news', music:'Play some relaxing lo-fi music', time:'What time is it?', joke:'Tell me a funny joke' };
+    const topics = ["animals", "technology", "food", "space", "sports", "school", "music", "history", "everyday life", "science", "pirates", "ghosts", "dinosaurs"];
+    const randomTopic = topics[Math.floor(Math.random() * topics.length)];
+    const actions = { 
+      weather: "What's the weather like?", 
+      news: 'Tell me the latest news', 
+      music: 'Play some relaxing lo-fi music', 
+      time: 'What time is it?', 
+      joke: `Tell me a unique and funny joke about ${randomTopic}.` 
+    };
     document.getElementById('chatInput').value = actions[type] || '';
     sendMessage();
   }
