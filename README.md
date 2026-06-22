@@ -17,8 +17,7 @@ A completely free, 100% serverless full-stack AI voice assistant powered by Goog
 ---
 
 ## 🚀 Live Demo
-
-*Deploy your own or link your live demo here.*
+(https://cbcde3ce.voice-assistant-7f2.pages.dev/)
 
 ![Setup Page Theme Screenshot](public/favicon.svg) <!-- Placeholders for screenshots -->
 
